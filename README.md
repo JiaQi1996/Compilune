@@ -1,14 +1,55 @@
-<p align="center"><img src="assets/AppIcon.png" width="112" alt="Folio TeX icon"></p>
+<p align="center"><img src="assets/AppIcon.png" width="112" alt="Compilune icon"></p>
 
-# Folio TeX · 墨页
+# Compilune
 
-**A local LaTeX writing workspace for macOS.**
+**A local LaTeX workspace for macOS, with a Windows preview under development.**
 
 English · [简体中文](README.zh-CN.md)
 
-Folio TeX opens to a project library and brings a CodeMirror 6 source editor, local compilation, and a PDF preview into one native macOS workspace. It was built for personal writing and is shared under the MIT license.
+Compilune opens to a project library and brings a CodeMirror 6 source editor, local compilation, and a PDF preview into one native macOS workspace. It was built for personal writing and is shared under the MIT license.
 
-Current version: **0.2.8**. The application interface is currently primarily **Simplified Chinese**; built-in completion descriptions and the default document template are English.
+Current version: **0.2.10**. The application interface is currently primarily **Simplified Chinese**; built-in completion descriptions and the default document template are English.
+
+## Download
+
+**[Download installers from GitHub Releases](https://github.com/JiaQi1996/FolioTex/releases)**
+
+Choose an installer matching your platform and processor:
+
+| Platform | Processor | Installer filename ending |
+| --- | --- | --- |
+| macOS | Apple Silicon (M series) | `-arm64.dmg` |
+| macOS | Intel | `-x86_64.dmg` |
+| Windows preview | ARM64 | `-windows-arm64-setup.exe` |
+| Windows preview | Intel / AMD 64-bit | `-windows-x64-setup.exe` |
+
+Available versions and platforms depend on the assets attached to each release. Download the matching `.sha256` file to verify an installer. On macOS, open the DMG and drag Compilune into Applications. A TeX distribution must be installed separately.
+
+## macOS screenshots
+
+Actual macOS application windows, using demonstration projects. The current interface is primarily Simplified Chinese.
+
+**Source editor and PDF preview** — local compilation, a folder tree, and side-by-side writing and reading.
+
+![Compilune on macOS: LaTeX source editor and compiled PDF preview](docs/screenshots/macos-workspace.png)
+
+**Project library** — pick up a recent document, pin a project, or open a local folder.
+
+![Compilune on macOS: project library with pinned projects and PDF covers](docs/screenshots/macos-library.png)
+
+<details>
+<summary>Dark appearance</summary>
+
+![Compilune on macOS: source editor and PDF preview in dark appearance](docs/screenshots/macos-workspace-dark.png)
+
+</details>
+
+<details>
+<summary>Appearance, font sizes, autosave, and compilation settings</summary>
+
+<img src="docs/screenshots/macos-settings.png" width="720" alt="Compilune on macOS: appearance, independent font sliders, autosave and compile settings">
+
+</details>
 
 ## Features
 
@@ -20,10 +61,10 @@ Current version: **0.2.8**. The application interface is currently primarily **S
 - **Local builds:** latexmk with pdfLaTeX, XeLaTeX, or LuaLaTeX; configurable main file, working/output directories, explicit rc file, and shell escape.
 - **PDF preview:** search, zoom, page navigation, last-successful-preview caching, and bidirectional SyncTeX. Double-click a PDF location to jump to source; use `⌘⇧J` in source to locate the PDF.
 - **Saving:** optional autosave with a 1–30 second delay, separate compile-after-manual-save and compile-after-autosave settings, unsaved-change confirmation, and recovery snapshots.
-- **Personalization:** live system appearance, explicit light/dark modes, independent interface/code font sizes, local custom templates, and optional build-file cleanup.
-- **Toolchain setup:** automatic TeX discovery and an optional MacTeX download flow that opens the macOS installer.
+- **Personalization:** live system appearance, explicit light/dark modes, independent interface/code font sizes with 8–30 sliders, local custom templates, and optional build-file cleanup.
+- **Toolchain setup:** automatic TeX discovery, distribution download options, and a bundled private Perl runtime for `latexmk`. TeX itself is installed separately.
 
-Editing and compilation run locally. The editor bundle, icons, and dependencies are included; normal use does not need Node.js or an internet connection. Downloading MacTeX requires a network connection.
+Editing and compilation run locally. The editor bundle, icons, and private Perl runtime are included; installed applications do not need Node.js. With the required TeX packages and fonts installed, writing and compilation work offline. Distribution downloads, updates, and MiKTeX on-demand package installation require a network connection.
 
 ## Platform status
 
@@ -32,11 +73,11 @@ One repository contains separate platform applications and a shared editor packa
 | Platform | Directory | Status |
 | --- | --- | --- |
 | macOS | [`apps/macos/`](apps/macos/README.md) | Implemented; Apple Silicon and Intel builds |
-| Windows | [`apps/windows/`](apps/windows/README.md) | Planned; no runnable application yet |
+| Windows | [`apps/windows/`](apps/windows/README.md) | Preview; ARM64 native and x64 emulation verified on Windows 11 ARM64 |
 | Linux | [`apps/linux/`](apps/linux/README.md) | Planned; no runnable application yet |
 | HarmonyOS | [`apps/harmonyos/`](apps/harmonyos/README.md) | Planned; no runnable application yet |
 
-The shared editor lives in [`packages/editor/`](packages/editor/README.md). Native host APIs, PDF rendering and compiler execution still need platform adapters. The SwiftUI/AppKit/PDFKit app is macOS-specific. See the [platform plan](docs/PLATFORMS.md).
+The shared editor lives in [`packages/editor/`](packages/editor/README.md). Windows implements its own host APIs, PDF.js viewer and compiler adapter. The SwiftUI/AppKit/PDFKit app is macOS-specific. See the [platform plan](docs/PLATFORMS.md).
 
 ## macOS requirements and architecture
 
@@ -44,7 +85,7 @@ The shared editor lives in [`packages/editor/`](packages/editor/README.md). Nati
 | --- | --- |
 | Operating system | macOS 14 or later |
 | Apple Silicon | `arm64`; built and integration-tested on Apple Silicon |
-| Intel | `x86_64`; cross-compiled and packaged, not runtime-tested on Intel hardware |
+| Intel | `x86_64`; cross-compiled; bundled Perl and compilation checked under Rosetta; Intel hardware not yet verified |
 | LaTeX | A local TeX distribution with `latexmk`, the chosen engine, and `synctex` |
 | Building the app | Xcode or Swift Command Line Tools with Swift 5.9+; tested with Swift 6.4 |
 | Editing the web editor | Node.js 18+ and npm |
@@ -53,7 +94,7 @@ The scripts build one architecture at a time. These are separate builds, not a U
 
 ## Get started
 
-1. Build the app below, or use an architecture-matching package if one is provided with the repository's releases.
+1. Choose the matching macOS DMG from [Releases](https://github.com/JiaQi1996/FolioTex/releases), or build from source below. Use `arm64` for Apple Silicon and `x86_64` for Intel, then drag Compilune into Applications.
 2. Open the app. Choose **打开本地项目** to select a project folder, or **新建项目** for the bundled English `article` template.
 3. Install MacTeX or another suitable TeX distribution. In **设置 → 工具链**, detect tools or set the executable directory (MacTeX normally uses `/Library/TeX/texbin`).
 4. Open project **配置**, select the main `.tex` file and engine, then press `⌘R` to compile.
@@ -64,13 +105,28 @@ Locally packaged apps use an **ad-hoc signature** and are not Developer ID signe
 
 Autosave defaults to on with a one-second delay. Both global compile-after-save options default to off. Manual-save compilation is independent of autosave; automatic-save compilation requires autosave. Project-level automatic compilation also requires autosave. A successful save triggers compilation when the corresponding option is enabled; an active build queues at most one subsequent build.
 
-Closing a project or quitting asks about remaining unsaved edits. Discarding does not revert edits that were already saved by autosave. Manual compilation, file moves, and closing a file tab can save buffers even when timed autosave is off.
+The library and project are mutually exclusive. Opening a project closes the library; returning to the library closes the project after Save/Discard/Cancel when dirty. Cancel retains the current project. Closing a project or quitting also checks unsaved edits. Discarding does not revert edits that were already saved by autosave. Manual compilation, file moves, and closing a file tab can save buffers even when timed autosave is off.
 
 ### PDF synchronization and cleanup
 
 SyncTeX needs a successful build of the latest source. Stale or cached PDFs must be rebuilt before source mapping. Mapping is typically accurate to a source line and may be approximate for whitespace or macro expansions.
 
 Optional cleanup removes recognized auxiliary files after a successful build while retaining PDF, SyncTeX, and source files. Failed builds retain diagnostic files. Cleanup can make the next build slower.
+
+## TeX distributions and private Perl
+
+Compilune includes **Perl 5.42.3** to run `latexmk` when needed, so Windows MiKTeX users do not need a separate Perl installation. **A TeX distribution is still required.**
+
+| Platform | TeX choices | Perl behavior |
+| --- | --- | --- |
+| macOS | MacTeX, or a compatible MiKTeX installation | Uses a working MacTeX/system interpreter; native private Perl is available as a fallback and preferred for MiKTeX |
+| Windows | TeX Live (recommended full installation), or MiKTeX (smaller initial download, packages installed on demand) | Keeps TeX Live's own environment; MiKTeX uses the bundled private Perl |
+
+The private runtime affects only compilation child processes and does not modify the global `PATH`. macOS packages include a matching native runtime for each architecture. Windows ARM64 packages use x64 Perl through Windows 11 emulation. Runtime details are shown in **设置 → 工具链**. See [runtime preparation, licenses, and limitations](docs/PERL_RUNTIME.md).
+
+### Custom templates
+
+Import copies a template into persistent application data. Deleting the original folder after a successful import does not break the stored template. New projects are independent copies. Keep required images, PDF figures, class/style and bibliography files inside the template folder; application updates retain the local template library.
 
 ## Build from source
 
@@ -81,9 +137,9 @@ xcode-select --install
 ./scripts/build-app.sh
 ```
 
-Built apps stay in the ignored local build folders: `apps/macos/.build-arm64/artifacts/Folio TeX-arm64.app` or `apps/macos/.build-x86_64/artifacts/Folio TeX-x86_64.app`.
+Built apps stay in the ignored local build folders: `apps/macos/.build-arm64/artifacts/Compilune-arm64.app` or `apps/macos/.build-x86_64/artifacts/Compilune-x86_64.app`.
 
-The checked-in editor bundle allows the native app to build without npm. After changing `packages/editor/src.js`, rebuild it before building the app:
+The checked-in editor bundle allows the native app to build without npm. Release builds also prepare a pinned private Perl runtime; the first build needs a verified source download and additional build time. See [private Perl runtime](docs/PERL_RUNTIME.md). After changing `packages/editor/src.js`, rebuild it before building the app:
 
 ```sh
 npm --prefix packages/editor ci
@@ -106,9 +162,25 @@ This also refreshes the bundled editor license notices. Commit both the edited s
 ./scripts/package.sh --arch x86_64
 ```
 
-`dist/` contains only the `arm64` and `x86_64` DMGs and a `.sha256` checksum file for each. Each checksum file covers its corresponding DMG; verify it inside `dist/` with `shasum -a 256 -c FolioTeX-0.2.8-arm64.sha256` (or the Intel filename). The packager verifies the app signature and DMG and writes SHA-256 checksums. `VERSION` holds the release version; `FOLIO_BUILD_NUMBER` optionally overrides the bundle build number.
+The repository-root `dist/` is shared by macOS and Windows. macOS packaging writes the `arm64` and `x86_64` DMGs and a `.sha256` checksum file for each; Windows packaging adds its ARM64/x64 EXE installers and matching checksums. Each checksum file covers its corresponding DMG; verify it inside `dist/` with `shasum -a 256 -c Compilune-0.2.10-arm64.sha256` (or the Intel filename). The packager verifies the app signature and DMG and writes SHA-256 checksums. `VERSION` holds the release version; `COMPILUNE_BUILD_NUMBER` optionally overrides the bundle build number (`FOLIO_BUILD_NUMBER` remains a compatibility fallback). Builds use ad-hoc signing by default; a distribution signing identity can be supplied with `COMPILUNE_SIGN_IDENTITY`. Developer ID signing and notarization are not included in the published local-build verification.
 
 The scripts use SwiftPM's `native` backend for the tested Command Line Tools environment. Newer Swift tools report this backend as deprecated; it currently builds successfully here. Explicit property-wrapper aliases avoid a missing SwiftUI macro plugin in that environment.
+
+## Windows preview and interface consistency
+
+Ports follow the [interface contract](docs/INTERFACE.md), with the existing macOS app as baseline. Windows shares the web workbench, design tokens and CodeMirror; macOS retains its native shell. System dialogs, windows and Command/Ctrl conventions remain platform-specific. Windows file/compiler/PDF.js adapters are implemented; Linux and HarmonyOS remain planned.
+
+See [Windows development and packaging](apps/windows/README.md). From repository root:
+
+```sh
+npm --prefix packages/editor ci
+npm --prefix apps/windows ci
+npm --prefix apps/windows start
+# Package ARM64 and x64 on Windows:
+npm --prefix apps/windows run package
+```
+
+x64 means Intel/AMD 64-bit, not 32-bit x86. Windows ARM64 native and x64 emulation UI workflows passed. Installation and launch passed. Real MiKTeX compilation, PDF preview and bidirectional SyncTeX are verified on Windows 11 ARM64; TeX Live compilation is not yet verified. Two EXEs and their checksums go to the repository-root `dist/`, alongside the macOS DMGs and checksums. Only installers and matching checksums belong in this directory; build intermediates remain in ignored `.build/` folders. Install Windows TeX Live (recommended) or MiKTeX separately.
 
 ## Contribution
 
@@ -119,14 +191,17 @@ Please include steps to reproduce and relevant logs in bug reports. Keep generat
 ```text
 apps/
   macos/                Implemented native app: Package.swift, Sources, scripts
-  windows/              Planned port; no implementation yet
+  windows/              Electron host, compiler, PDF.js and ARM64/x64 packager
   linux/                Planned port; no implementation yet
   harmonyos/            Planned port; no implementation yet
 packages/
   editor/               Shared CodeMirror source, static assets, and bundle builder
-scripts/                Root entry points for the macOS build/package
-docs/                   Architecture, platform plan, shortcuts
+  workbench/            Shared web project library, workspace and settings
+  design/               Semantic colors, layout tokens and generated adapters
+scripts/                Build/package entry points, icon export, private Perl preparation
+docs/                   Architecture, platform plan, shortcuts, runtime notes, screenshots
 assets/                 Shared app icon source and attribution
+third_party/            Private Perl source pins and redistribution license notices
 ```
 
 See [Architecture and local storage](docs/ARCHITECTURE.md), [Shortcuts](docs/SHORTCUTS.md), and [Changelog](CHANGELOG.md).
@@ -143,8 +218,14 @@ See [Architecture and local storage](docs/ARCHITECTURE.md), [Shortcuts](docs/SHO
 
 ## License and acknowledgments
 
-Folio TeX's original code is released under the [MIT License](LICENSE), copyright © 2026 JiaQi.
+Compilune's original code is released under the [MIT License](LICENSE), copyright © 2026 JiaQi.
 
-[CodeMirror 6](https://codemirror.net/) and its runtime dependencies retain their MIT licenses. [Lucide](https://lucide.dev/) icons retain their ISC/Feather notices. See [Third-party notices](docs/THIRD_PARTY.md) and the license files in `apps/macos/Sources/FolioTeX/Resources/`.
+[CodeMirror 6](https://codemirror.net/) and its runtime dependencies retain their MIT licenses. [Lucide](https://lucide.dev/) icons retain their ISC/Feather notices. See [Third-party notices](docs/THIRD_PARTY.md) and the license files in `apps/macos/Sources/Compilune/Resources/`.
 
-MacTeX and TeX tools are installed separately and are not included in this repository. Folio TeX is an independent project and is not affiliated with Texifier.
+Bundled Perl and its components retain their original licenses; runtime packages include the corresponding notices. See [Perl third-party information](third_party/perl/README.md). MacTeX and other TeX distributions are installed separately and are not bundled with the app. Compilune is an independent project and is not affiliated with Texifier.
+
+## Name and upgrade compatibility
+
+The application uses the English name **Compilune** on every platform. Existing installations retain their previous application-data directory automatically, along with project libraries, settings, recovery files and imported templates. Legacy bundle/installer identifiers and `.folio` project metadata remain stable for upgrade compatibility.
+
+The original icon source is `assets/AppIcon.svg`. To regenerate PNG, ICO and ICNS assets, install `rsvg-convert` (librsvg) and run `node scripts/build-icons.mjs`. Generated assets are committed, so normal application builds do not require that tool.

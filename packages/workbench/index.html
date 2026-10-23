@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; worker-src 'self' blob:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'"
+    />
+    <title>Compilune</title>
+    <link rel="stylesheet" href="folio://app/pdf/web/pdf_viewer.css" />
+    <link rel="stylesheet" href="design.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <header class="titlebar">
+      <div class="brand">
+        <img src="folio://app/assets/AppIcon.png" alt="Compilune" /><b
+          >Compilune</b
+        ><span class="brand-separator"></span
+        ><span id="window-title">项目库</span>
+      </div>
+      <div class="title-actions">
+        <button
+          id="top-settings"
+          class="icon-button"
+          title="打开设置（Ctrl+,）"
+          aria-label="设置"
+        ></button>
+      </div>
+    </header>
+    <main id="library" class="library">
+      <aside class="library-sidebar">
+        <div class="library-brand">
+          <img src="folio://app/assets/AppIcon.png" alt="Compilune" />
+          <div><b>Compilune</b><span>你的本地写作空间</span></div>
+        </div>
+        <nav id="library-nav">
+          <button data-filter="all" class="active" title="显示全部项目">
+            全部项目</button
+          ><button data-filter="recent" title="按最近打开排列">最近打开</button
+          ><button data-filter="pinned" title="只显示置顶项目">已置顶</button
+          ><button data-filter="archived" title="显示已归档项目">已归档</button>
+        </nav>
+        <footer>
+          <p>本地文件 · 本地编译</p>
+          <button id="library-settings" title="打开设置">设置…</button>
+        </footer>
+      </aside>
+      <div class="library-content">
+        <div class="library-hero">
+          <div>
+            <div class="eyebrow">PROJECT LIBRARY</div>
+            <h1 id="library-title">全部项目.</h1>
+            <p>让思绪落在纸上，其他的交给Compilune。</p>
+          </div>
+          <div class="hero-actions">
+            <button
+              id="open-project"
+              class="button secondary"
+              title="打开本地项目文件夹（Ctrl+O）"
+            ></button
+            ><button
+              id="new-project"
+              class="button primary"
+              title="创建新的 LaTeX 项目（Ctrl+N）"
+            ></button>
+          </div>
+        </div>
+        <div id="continue-card"></div>
+        <div class="library-tools">
+          <h2 id="projects-heading">
+            我的项目 <span id="project-count"></span>
+          </h2>
+          <div class="library-filters">
+            <button
+              id="library-layout"
+              class="icon-button"
+              title="切换项目卡片与列表"
+            ></button>
+            <label class="search-field"
+              ><span id="library-search-icon"></span
+              ><input
+                id="library-query"
+                placeholder="搜索项目名称或路径…"
+                aria-label="搜索项目" /></label
+            ><select id="library-sort" title="项目排序">
+              <option value="opened">最近打开</option>
+              <option value="edited">最近修改</option>
+              <option value="name">项目名称</option></select
+            ><button
+              id="show-archived"
+              class="icon-button"
+              title="查看归档项目"
+            ></button>
+          </div>
+        </div>
+        <div id="project-grid" class="project-grid"></div>
+        <footer class="library-footer">
+          <span>本地编译 · 离线写作 · 属于你的文稿</span
+          ><span id="library-version"></span>
+        </footer>
+      </div>
+    </main>
+    <section id="workspace" class="workspace" hidden>
+      <header class="workspace-toolbar">
+        <button
+          id="toolbar-library"
+          class="icon-button"
+          title="返回项目库（Ctrl+K）"
+        ></button>
+        <div class="workspace-toolbar-title">
+          <b id="toolbar-project-name"></b
+          ><small id="toolbar-project-status">就绪</small>
+        </div>
+        <div class="workspace-toolbar-actions">
+          <button
+            id="toolbar-engine"
+            class="button secondary"
+            title="选择主文件和编译引擎"
+          ></button
+          ><span id="toolbar-build-slot"></span
+          ><span id="toolbar-view-slot"></span
+          ><button
+            id="toolbar-search"
+            class="icon-button"
+            title="项目搜索与替换（Ctrl+Shift+F）"
+          ></button
+          ><button
+            id="toolbar-log"
+            class="icon-button"
+            title="显示编译日志"
+          ></button
+          ><button
+            id="export-pdf"
+            class="button secondary"
+            title="另存上次成功编译的 PDF"
+          >
+            导出 PDF
+          </button>
+        </div>
+      </header>
+      <aside id="sidebar" class="file-sidebar">
+        <div class="sidebar-heading">
+          <div class="segments">
+            <button id="files-mode" class="segment active" title="显示文件树">
+              文件</button
+            ><button
+              id="outline-mode"
+              class="segment"
+              title="显示 TeX 章节大纲"
+            >
+              大纲
+            </button>
+          </div>
+          <div class="inline-actions">
+            <button
+              id="new-folder"
+              class="icon-button"
+              title="新建文件夹"
+            ></button
+            ><button
+              id="new-item"
+              class="icon-button"
+              title="新建文件、TeX 或 Bib"
+            ></button
+            ><button
+              id="refresh-files"
+              class="icon-button"
+              title="刷新项目文件"
+            ></button>
+          </div>
+        </div>
+        <button
+          id="project-root"
+          class="project-root"
+          title="选择项目根目录"
+        ></button>
+        <div id="file-tree" class="file-tree"></div>
+        <div id="outline-tree" class="outline-tree" hidden></div>
+        <button
+          id="project-config"
+          class="project-config"
+          title="配置主文件、编译引擎与输出目录"
+        ></button
+        ><button
+          id="back-library"
+          class="back-library"
+          title="返回项目库（Ctrl+K）"
+        ></button>
+      </aside>
+      <div
+        id="sidebar-splitter"
+        class="splitter"
+        title="拖动调整侧栏宽度"
+      ></div>
+      <section class="editor-panel">
+        <div class="editor-top">
+          <div id="tabs" class="tabs"></div>
+          <button
+            id="toggle-format"
+            class="format-button"
+            title="显示或隐藏格式与插入工具栏"
+          >
+            格式
+          </button>
+        </div>
+        <div id="editor-empty" class="editor-empty">
+          <div class="empty-mark">T<span>E</span>X</div>
+          <h3>从一行文字开始</h3>
+          <p>在左侧打开文件，或按 Ctrl+P 快速查找。</p>
+        </div>
+        <iframe id="editor" title="LaTeX 源码编辑器"></iframe>
+      </section>
+      <div
+        id="preview-splitter"
+        class="splitter"
+        title="拖动调整 PDF 预览宽度"
+      ></div>
+      <section id="preview-panel" class="preview-panel">
+        <div class="pdf-toolbar">
+          <div class="pdf-name">
+            <span id="pdf-icon"></span><span id="pdf-title">PDF 预览</span
+            ><span id="pdf-stale" class="stale-tag" hidden>待编译</span>
+          </div>
+          <div class="inline-actions">
+            <button
+              id="pdf-find"
+              class="icon-button"
+              title="查找 PDF 文本（Ctrl+F）"
+            ></button
+            ><button
+              id="pdf-minus"
+              class="icon-button"
+              title="缩小 PDF"
+            ></button
+            ><button
+              id="pdf-fit"
+              class="icon-button"
+              title="PDF 适合宽度"
+            ></button
+            ><button
+              id="pdf-plus"
+              class="icon-button"
+              title="放大 PDF"
+            ></button>
+          </div>
+        </div>
+        <div id="pdf-search" class="pdf-search" hidden>
+          <input
+            id="pdf-query"
+            placeholder="在 PDF 中查找…"
+            aria-label="PDF 查找"
+          /><span id="pdf-matches"></span
+          ><button
+            id="pdf-previous"
+            class="icon-button"
+            title="上一处匹配（Shift+F3）"
+          >
+            ↑</button
+          ><button id="pdf-next" class="icon-button" title="下一处匹配（F3）">
+            ↓</button
+          ><button
+            id="pdf-close-find"
+            class="icon-button"
+            title="关闭 PDF 查找"
+          >
+            ×
+          </button>
+        </div>
+        <div class="pdf-body">
+          <div id="pdf-empty" class="pdf-empty">
+            <div id="pdf-empty-icon"></div>
+            <h3>预览将在这里展开</h3>
+            <p>选择主文件，按 Ctrl+R 本地编译。</p>
+          </div>
+          <div id="pdf-scroll">
+            <div id="pdf-pages" class="pdfViewer"></div>
+          </div>
+        </div>
+        <div class="pdf-bottom">
+          <span id="pdf-page-label">— / —</span><span>双击 PDF 跳转源码</span
+          ><span id="pdf-scale">适宽</span>
+        </div>
+      </section>
+      <section id="build-panel" class="build-panel" hidden>
+        <div class="build-heading">
+          <b>编译日志</b
+          ><button id="clear-log" class="text-button" title="清空当前日志显示">
+            清空</button
+          ><button id="close-log" class="icon-button" title="收起编译日志">
+            ×
+          </button>
+        </div>
+        <pre id="build-log"></pre>
+      </section>
+      <footer class="statusbar">
+        <div class="status-left">
+          <button
+            id="toggle-sidebar"
+            class="icon-button"
+            title="显示或隐藏文件侧栏"
+          ></button
+          ><span id="status-message">就绪</span>
+        </div>
+        <div class="status-right">
+          <button
+            id="show-log"
+            class="status-button"
+            title="显示或隐藏编译日志"
+          ></button
+          ><span id="status-engine">XeLaTeX</span><span>UTF-8</span
+          ><button
+            id="save"
+            class="icon-button"
+            title="保存项目（Ctrl+S）"
+          ></button
+          ><button
+            id="stop-build"
+            class="icon-button"
+            title="停止编译（Ctrl+.）"
+            hidden
+          ></button
+          ><button
+            id="compile"
+            class="compile-button"
+            title="编译主文件（Ctrl+R）"
+          ></button
+          ><button
+            id="toggle-preview"
+            class="icon-button"
+            title="显示或隐藏 PDF 预览"
+          ></button>
+        </div>
+      </footer>
+    </section>
+    <dialog id="settings-dialog" class="settings-dialog">
+      <header class="dialog-header">
+        <div>
+          <h2>偏好设置</h2>
+          <p>让工作区符合你的写作习惯。</p>
+        </div>
+        <button class="icon-button dialog-close" title="关闭设置">×</button>
+      </header>
+      <div class="settings-layout">
+        <nav id="settings-nav"></nav>
+        <div id="settings-content" class="settings-content"></div>
+      </div>
+    </dialog>
+    <dialog id="config-dialog" class="config-dialog"></dialog>
+    <dialog id="search-dialog" class="search-dialog"></dialog>
+    <div id="context-menu" class="context-menu" hidden></div>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

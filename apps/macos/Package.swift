@@ -2,10 +2,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "FolioTeX",
+    name: "Compilune",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "FolioTeX", targets: ["FolioTeX"])],
+    products: [.executable(name: "Compilune", targets: ["Compilune"])],
     targets: [
-        .executableTarget(name: "FolioTeX", resources: [.copy("Resources")])
+        .executableTarget(name: "Compilune", resources: [.copy("Resources")])
     ]
 )

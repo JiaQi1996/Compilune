@@ -4,7 +4,7 @@
 
 The implemented macOS app in `apps/macos/` is a Swift Package executable targeting macOS 14+. SwiftUI renders the library, workspace, and settings; AppKit owns windows, menus, dialogs, and application lifecycle. A local WKWebView hosts CodeMirror 6. PDFKit renders compiler output.
 
-The shared editor source and canonical web assets live in `packages/editor/`. Root scripts forward to `apps/macos/scripts/`. Other platform directories currently contain planning notes only; see [Platform plan](PLATFORMS.md).
+The shared editor source and canonical assets live in `packages/editor/`. The Windows Electron host lives in `apps/windows/`, consumes `packages/workbench/`, and uses PDF.js. `packages/design/` generates common CSS and the native macOS accent. Linux and HarmonyOS remain planned; see [Platforms](PLATFORMS.md) and the [interface contract](INTERFACE.md). Root scripts continue to forward to macOS scripts.
 
 ## Main components
 
@@ -51,13 +51,15 @@ SyncTeX mapping is disabled for stale previews. A successful fresh build enables
 
 | Location | Content |
 | --- | --- |
-| `~/Library/Application Support/FolioTeX/registry.json` | Known projects and library metadata |
-| `~/Library/Application Support/FolioTeX/workspace-state/<UUID>/` | Tabs, selection/scroll, recovery snapshots, last successful PDF |
-| `~/Library/Application Support/FolioTeX/Templates/` | Imported template folders |
+| `~/Library/Application Support/Compilune/registry.json` | Known projects and library metadata |
+| `~/Library/Application Support/Compilune/workspace-state/<UUID>/` | Tabs, selection/scroll, recovery snapshots, last successful PDF |
+| `~/Library/Application Support/Compilune/Templates/` | Imported template folders |
 | UserDefaults for the app bundle | Fonts, theme, shortcuts, autosave and compile preferences |
 | `<project>/.folio/project.json` | Main file, engine and project build options |
 | `<working-directory>/.folio/build/` | Default compiler output directory |
-| `~/Downloads/FolioTeX/` | Optional downloaded MacTeX installer |
+| `~/Downloads/Compilune/` | Optional downloaded MacTeX installer |
 
 The project UUID associates workspace state with a library entry. Removing an entry does not delete its project folder. Imported templates are copied to create independent projects.
 
+
+Application data paths above describe fresh Compilune installations. Upgrades automatically retain the legacy data folder if it exists. Bundle/installer identifiers, IPC channels and `.folio` metadata remain stable to preserve preferences and project compatibility.

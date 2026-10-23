@@ -55,9 +55,16 @@ import {
   closeCompletion,
 } from "@codemirror/autocomplete";
 
-const post = (body) => window.webkit?.messageHandlers.folio.postMessage(body);
+let hostPlatform = /Mac/.test(navigator.platform) ? "darwin" : "win32";
+const post = (body) => {
+  if (window.webkit?.messageHandlers?.folio)
+    window.webkit.messageHandlers.folio.postMessage(body);
+  else if (window.parent !== window)
+    window.parent.postMessage({ channel: "folio-editor", message: body }, "*");
+};
 let path = "",
   size = 13,
+  uiSize = 13,
   dark = false,
   symbols = [],
   files = [],
@@ -94,6 +101,14 @@ const commandHelp = {
 };
 const defaultHints = new Map();
 function shortcutLabel(key) {
+  if (hostPlatform !== "darwin")
+    return key
+      .replaceAll("Mod-", "Ctrl+")
+      .replaceAll("Ctrl-", "Ctrl+")
+      .replaceAll("Alt-", "Alt+")
+      .replaceAll("Shift-", "Shift+")
+      .replace("Enter", "Enter")
+      .replace(/[a-z]$/, (s) => s.toUpperCase());
   return key
     .replaceAll("Mod-", "⌘")
     .replaceAll("Ctrl-", "⌃")
@@ -106,7 +121,16 @@ function shortcutLabel(key) {
 function helpWithKey(id, text, fallback = "") {
   const binding = commandRecords.find((c) => c.id === id),
     key = binding ? shortcutLabel(binding.key) : fallback;
-  return text + (key ? "（" + key + "）" : "");
+  const display =
+    hostPlatform === "darwin"
+      ? key
+      : key
+          .replaceAll("⌘", "Ctrl+")
+          .replaceAll("⌃", "Ctrl+")
+          .replaceAll("⌥", "Alt+")
+          .replaceAll("⇧", "Shift+")
+          .replaceAll("↩", "Enter");
+  return text + (display ? "（" + display + "）" : "");
 }
 function updateButtonHelp(root = document) {
   const buttons = [
@@ -171,7 +195,10 @@ const theme = () =>
         color: dark ? "#e0e5dc" : "#242c28",
       },
       ".cm-content": {
-        fontFamily: "SFMono-Regular, Menlo, monospace",
+        fontFamily:
+          hostPlatform === "darwin"
+            ? "SFMono-Regular, Menlo, monospace"
+            : "Cascadia Code, Consolas, monospace",
         lineHeight: "1.65",
         padding: "16px 0",
       },
@@ -181,7 +208,7 @@ const theme = () =>
         backgroundColor: dark ? "#212723" : "#fdfdfb",
         color: dark ? "#9aa895" : "#7b8575",
         border: "none",
-        fontSize: Math.max(size, 11) + "px",
+        fontSize: size + "px",
       },
       ".cm-activeLine, .cm-activeLineGutter": {
         backgroundColor: dark ? "#34432f66" : "#e2e8dd66",
@@ -191,12 +218,12 @@ const theme = () =>
         backgroundColor: dark ? "#526b5666" : "#b6caae66",
       },
       ".cm-panels": {
-        fontSize: Math.max(11, size) + "px",
+        fontSize: uiSize + "px",
         backgroundColor: dark ? "#252a27" : "#f0f1ec",
         color: dark ? "#e0e5dc" : "#242c28",
       },
       ".cm-tooltip": {
-        fontSize: Math.max(11, size) + "px",
+        fontSize: uiSize + "px",
         backgroundColor: dark ? "#252a27" : "#ffffff",
         border: "1px solid " + (dark ? "#465142" : "#d9dfd3"),
       },
@@ -207,7 +234,10 @@ const theme = () =>
         boxShadow: dark ? "0 14px 36px #0006" : "0 12px 32px #1c302022",
       },
       ".cm-tooltip-autocomplete > ul": {
-        fontFamily: "SFMono-Regular, Menlo, monospace",
+        fontFamily:
+          hostPlatform === "darwin"
+            ? "SFMono-Regular, Menlo, monospace"
+            : "Cascadia Code, Consolas, monospace",
         minWidth: "290px",
         maxWidth: "min(390px, 90vw)",
         maxHeight: "260px",
@@ -226,7 +256,7 @@ const theme = () =>
       ".cm-completionDetail": {
         display: "block",
         fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
-        fontSize: "11px",
+        fontSize: Math.max(8, uiSize - 2) + "px",
         fontStyle: "normal",
         opacity: ".7",
         margin: "2px 0 0 22px",
@@ -720,7 +750,7 @@ function replacePanel() {
   return true;
 }
 function font(delta) {
-  size = delta === 0 ? 13 : Math.min(28, Math.max(10, size + delta));
+  size = delta === 0 ? 13 : Math.min(30, Math.max(8, size + delta));
   view.dispatch({ effects: style.reconfigure(theme()) });
   post({ type: "font", size });
   return true;
@@ -877,7 +907,14 @@ function mappedKeys(rows) {
     .filter((r) => r.key)
     .flatMap((r) => {
       const a = [
-        { key: r.key, run: () => command(r.id), preventDefault: true },
+        {
+          key:
+            hostPlatform === "darwin"
+              ? r.key
+              : r.key.replaceAll("Mod-", "Ctrl-"),
+          run: () => command(r.id),
+          preventDefault: true,
+        },
       ];
       if (r.id === "fontUp" && r.key === "Mod-=")
         a.push({
@@ -1067,6 +1104,16 @@ window.folio = {
       case "forget":
         documents.delete(message.path);
         break;
+      case "reset":
+        documents.clear();
+        navigation = [];
+        forwardNavigation = [];
+        path = "";
+        restoring = true;
+        view.setState(EditorState.create({ doc: "", extensions }));
+        restoring = false;
+        document.querySelector("#file-path").textContent = "选择一个文件";
+        break;
       case "empty":
         path = "";
         restoring = true;
@@ -1095,7 +1142,10 @@ window.folio = {
         const signature = JSON.stringify(message);
         if (signature === optionsSignature) break;
         optionsSignature = signature;
-        size = message.size || 13;
+        if (message.platform) hostPlatform = message.platform;
+        size = Math.max(8, Math.min(30, Number(message.size) || 13));
+        uiSize = Math.max(8, Math.min(30, Number(message.uiSize) || 13));
+        document.documentElement.style.setProperty("--ui-size", uiSize + "px");
         dark = !!message.dark;
         if (typeof message.toolbarVisible === "boolean")
           document.querySelector("#toolbar").hidden = !message.toolbarVisible;

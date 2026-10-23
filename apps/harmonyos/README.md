@@ -1,4 +1,4 @@
-# Folio TeX for HarmonyOS
+# Compilune for HarmonyOS
 
 **Status: planned — no implementation or runnable build yet.**
 

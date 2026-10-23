@@ -1,6 +1,6 @@
 # Shared CodeMirror editor
 
-Platform-neutral editor source and static assets, with a native host bridge. The existing bridge targets macOS WKWebView; Windows, Linux and HarmonyOS hosts still require their own transport adapters.
+Platform-neutral editor source and static assets, with a native host bridge. The editor supports macOS WKWebView and the Windows parent-message transport; Linux and HarmonyOS apps are not implemented.
 
 ```sh
 # From repository root; default output refreshes the macOS bundled resources.
@@ -13,6 +13,6 @@ npm --prefix packages/editor run build -- --outdir /absolute/path/to/resources
 
 `src.js` contains CodeMirror behavior. `static/Editor/` contains canonical HTML and SVG assets. `build.mjs` bundles JavaScript, copies static assets and gathers runtime licenses. macOS includes a generated copy in its Resources for offline native builds; edit the shared sources here and regenerate.
 
-The host sends messages through `window.folio.receive(...)`; the current `post(...)` transport sends replies through WKWebView. Before treating this as a cross-platform ready component, implement and test an equivalent host transport for the new platform.
+The host sends messages through `window.folio.receive(...)`; replies use WKWebView when present, otherwise parent postMessage with `channel: "folio-editor"`. Hosts validate the sender and flush edits before save/close. Windows sends `platform: "win32"` to select Ctrl bindings, labels and fonts.
 
-公共编辑器源码和资源位于此目录。默认构建刷新 macOS 离线资源，也可使用 `--outdir` 输出到其他宿主的资源目录。当前消息传输仍使用 WKWebView；其他平台需要自己的桥接适配，并不代表已经完成跨平台应用。
+公共编辑器源码和资源位于此目录。默认构建刷新 macOS 离线资源，也可使用 `--outdir` 输出到其他宿主的资源目录。支持 macOS WKWebView 与 Windows 父窗口桥接。新平台仍需宿主适配和保存/关闭前的编辑刷新确认；Linux/HarmonyOS 尚未实现。

@@ -23,3 +23,8 @@ test-results/
 editor-test.png
 completion-preview.png
 *.log
+
+# Windows development and release output
+node_modules/
+apps/windows/build/
+apps/windows/release/

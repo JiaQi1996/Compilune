@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.10
+
+- Bundled private Perl 5.42.3 on macOS arm64/x86_64 and Windows x64, including Windows ARM64 through x64 emulation.
+- Runtime source/version reporting, isolated child-process environment, TeX Live environment preservation and MiKTeX fallback without a separate Perl installation.
+- Pinned archive checksums, relocatable macOS builds, Windows administrative extraction without system installation, runtime licenses and nested macOS code signing.
+
+## 0.2.9 — Compilune / Windows preview
+
+- Windows Electron host, local files/compiler, PDF.js and bidirectional SyncTeX.
+- ARM64/x64 NSIS targets; UI, installation and launch verified on Windows 11 ARM64 (x64 under emulation). Windows TeX Live compilation remains unverified.
+- Shared CodeMirror transport, web workbench, design tokens and cross-platform interface contract.
+- Renamed the application to Compilune across macOS, Windows, documentation and installers; added an original crescent C icon. Existing settings, project libraries, recovery data and templates remain compatible.
+- Windows MiKTeX: explicit noninteractive package installation, actionable missing-Perl guidance, refreshed Windows PATH after tool installation and a longer first-build timeout. Real pdfLaTeX builds, PDF search, double-click reverse SyncTeX and auxiliary cleanup passed in both app architectures.
+- Mutually exclusive library/project screens, with acknowledged editor flush and Save/Discard/Cancel on return or project switch.
+- Both interface/code sizes use 8–30 sliders, with scalable Windows interface text and standard Lucide settings icons.
+- Toolchain settings offer TeX Live/MacTeX and MiKTeX downloads with full-install versus on-demand/network guidance. Imported templates remain independent local copies, including PDF figure assets.
+
 ## 0.2.8
 
 - Independent compile-after-manual-save option, alongside compile-after-autosave.

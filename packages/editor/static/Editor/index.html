@@ -7,10 +7,11 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
     />
-    <title>Folio TeX 编辑器</title>
+    <title>Compilune 编辑器</title>
     <style>
       :root {
         color-scheme: light;
+        --ui-size: 13px;
         --bg: #f8f7f4;
         --fg: #242c28;
         --line: #e4e5df;
@@ -36,7 +37,7 @@
         background: var(--bg);
         color: var(--fg);
         font:
-          12px -apple-system,
+          var(--ui-size) -apple-system,
           BlinkMacSystemFont,
           sans-serif;
       }
@@ -74,7 +75,7 @@
       }
       #toolbar button {
         min-width: 26px;
-        height: 27px;
+        min-height: max(27px, calc(var(--ui-size) * 1.5 + 10px));
       }
       #toolbar .rule {
         height: 16px;
@@ -92,7 +93,7 @@
         justify-content: space-between;
         border-top: 1px solid var(--line);
         padding: 5px 10px;
-        font-size: 11px;
+        font-size: calc(var(--ui-size) * 0.846154);
         opacity: 0.75;
       }
       #file-path {
@@ -116,7 +117,7 @@
         color: var(--fg);
       }
       .cm-search label {
-        font-size: 11px;
+        font-size: calc(var(--ui-size) * 0.846154);
       }
       .cm-button {
         border: 1px solid var(--line) !important;

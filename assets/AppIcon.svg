@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" role="img" aria-labelledby="title desc">
-  <title id="title">Folio TeX · 墨页</title>
-  <desc id="desc">鼠尾草绿圆角方形底，米白色手绘 f 字标和圆点，代表书写与排版。</desc>
+  <title id="title">Compilune</title>
+  <desc id="desc">A cream crescent C and a small star on a sage green background.</desc>
   <defs>
     <linearGradient id="sage" x1="174" y1="88" x2="826" y2="948" gradientUnits="userSpaceOnUse">
       <stop stop-color="#6D846A"/>
@@ -15,6 +15,6 @@
   </defs>
   <rect x="72" y="72" width="880" height="880" rx="204" fill="url(#sage)"/>
   <rect x="74" y="74" width="876" height="876" rx="202" stroke="url(#edge)" stroke-width="4"/>
-  <path d="M677 247C646 218 612 207 574 209C504 212 459 260 439 337L416 424H341L327 476H402L352 666C339 714 318 749 289 744C276 742 267 735 253 739C235 745 232 765 244 779C259 797 285 805 311 804C379 802 423 743 444 665L495 476H588L602 424H509L533 334C545 288 566 261 594 261C608 261 617 268 629 278C642 289 661 287 672 275C681 266 685 254 677 247Z" fill="#F6F3E7"/>
-  <circle cx="652" cy="684" r="43" fill="#F6F3E7"/>
+  <path d="M678 319C581 250 448 282 383 377C317 473 330 607 416 684C488 748 598 751 684 690" stroke="#F6F3E7" stroke-width="76" stroke-linecap="round"/>
+  <path d="M686 453C690 489 701 500 737 504C701 508 690 519 686 555C682 519 671 508 635 504C671 500 682 489 686 453Z" fill="#F6F3E7"/>
 </svg>

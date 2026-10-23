@@ -13,15 +13,15 @@ elif [[ $# -ne 0 ]]; then
     exit 2
 fi
 "$TASK_ROOT/scripts/build-app.sh" --arch "$TASK_ARCH"
-TASK_APP="$TASK_ROOT/.build-$TASK_ARCH/artifacts/Folio TeX-$TASK_ARCH.app"
-TASK_NAME="FolioTeX-$TASK_VERSION-$TASK_ARCH"
+TASK_APP="$TASK_ROOT/.build-$TASK_ARCH/artifacts/Compilune-$TASK_ARCH.app"
+TASK_NAME="Compilune-$TASK_VERSION-$TASK_ARCH"
 TASK_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/folio-dmg.XXXXXX")"
 trap 'rm -rf "$TASK_STAGE"' EXIT
 
 mkdir -p dist
-ditto "$TASK_APP" "$TASK_STAGE/Folio TeX.app"
+ditto "$TASK_APP" "$TASK_STAGE/Compilune.app"
 ln -s /Applications "$TASK_STAGE/Applications"
-hdiutil create -volname "Folio TeX" -srcfolder "$TASK_STAGE" -ov -format UDZO "dist/$TASK_NAME.dmg"
+hdiutil create -volname "Compilune" -srcfolder "$TASK_STAGE" -ov -format UDZO "dist/$TASK_NAME.dmg"
 hdiutil verify "dist/$TASK_NAME.dmg"
 (
     cd dist

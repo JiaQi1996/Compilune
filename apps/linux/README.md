@@ -1,4 +1,4 @@
-# Folio TeX for Linux
+# Compilune for Linux
 
 **Status: planned — no implementation or runnable build yet.**
 

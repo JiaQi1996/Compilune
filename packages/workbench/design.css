@@ -1,0 +1,41 @@
+/* Generated from packages/design/tokens.json. */
+:root {
+  color-scheme: light;
+  --bg: #f8f8f5;
+  --surface: #ffffff;
+  --surface-alt: #f1f3ee;
+  --sidebar: #f0f2ed;
+  --text: #25352c;
+  --muted: #7a857b;
+  --line: #e0e5dd;
+  --accent: #526b56;
+  --accent-soft: #e2eadd;
+  --hover: #e9eee5;
+  --danger: #b05f4c;
+  --paper: #fafbf8;
+  --shadow: 0 14px 44px #253a2912;
+  --ui-size: 13px;
+  --sidebar-width: 248px;
+  --library-sidebar-width: 212px;
+  --preview-width: 44%;
+  --tree-indent: 17px;
+  --row-height: 30px;
+  --control-radius: 8px;
+  --dialog-radius: 14px;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #202622;
+  --surface: #252e27;
+  --surface-alt: #2a342c;
+  --sidebar: #222b24;
+  --text: #e0e7dd;
+  --muted: #a0ad9d;
+  --line: #38473a;
+  --accent: #a5bf97;
+  --accent-soft: #354832;
+  --hover: #33412f;
+  --danger: #eba18e;
+  --paper: #283128;
+  --shadow: 0 16px 48px #0003;
+}

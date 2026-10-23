@@ -1,0 +1,68 @@
+{
+  "name": "compilune-windows",
+  "productName": "Compilune",
+  "version": "0.2.10",
+  "description": "A local LaTeX writing workspace for Windows",
+  "author": "JiaQi",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "src/main/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "dev": "electron .",
+    "package:arm64": "node scripts/package.mjs arm64",
+    "package:x64": "node scripts/package.mjs x64",
+    "package": "node scripts/package.mjs all"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3",
+    "pdfjs-dist": "6.4.299"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "build": {
+    "appId": "org.foliotex.windows",
+    "productName": "Compilune",
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "../../.build/runtimes/windows-x64/perl",
+        "to": "runtimes/perl",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "directories": {
+      "output": ".build/electron-builder",
+      "buildResources": "assets"
+    },
+    "files": [
+      "src/**",
+      "build/**",
+      "assets/**",
+      "package.json",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/AppIcon.ico",
+      "artifactName": "Compilune-${version}-windows-${arch}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "Compilune",
+      "license": "build/Licenses/Compilune-MIT.txt",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": null
+  }
+}

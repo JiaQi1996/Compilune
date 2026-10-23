@@ -9,7 +9,7 @@ if (outputFlag !== -1 && !process.argv[outputFlag + 1])
   throw new Error("--outdir requires a path");
 const resourceRoot =
   outputFlag === -1
-    ? path.resolve(editorRoot, "../../apps/macos/Sources/FolioTeX/Resources")
+    ? path.resolve(editorRoot, "../../apps/macos/Sources/Compilune/Resources")
     : path.resolve(process.argv[outputFlag + 1]);
 await cp(
   path.join(editorRoot, "static/Editor"),

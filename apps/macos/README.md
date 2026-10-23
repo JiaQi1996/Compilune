@@ -1,4 +1,4 @@
-# Folio TeX for macOS
+# Compilune for macOS
 
 Implemented with SwiftUI, AppKit, WKWebView and PDFKit. Requires macOS 14+.
 
