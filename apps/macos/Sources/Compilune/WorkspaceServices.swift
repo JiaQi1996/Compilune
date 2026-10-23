@@ -30,6 +30,13 @@ import PDFKit
         }
     }
     func openOutline(_ node: OutlineNode) { open(node.path, line: node.line) }
+    func treeExpanded(_ id: String, outline: Bool, depth: Int) -> Bool {
+        (outline ? outlineTreeExpansion : fileTreeExpansion)[id] ?? (outline && depth == 0)
+    }
+    func setTreeExpanded(_ expanded: Bool, id: String, outline: Bool) {
+        if outline { outlineTreeExpansion[id] = expanded } else { fileTreeExpansion[id] = expanded }
+        persistSessionSoon()
+    }
     func stopBackgroundWork() {
         stoppedByUser = true
         pendingBuild = false
@@ -100,6 +107,7 @@ import PDFKit
         rcFile = c.rcFile ?? ""
         workingDirectory = c.workingDirectory ?? ""
         outputDirectory = c.outputDirectory ?? ".folio/build"
+        bibliographyFile = c.bibliographyFile ?? ""
     }
     func positionDictionary(_ path: String) -> [String: Any] {
         let p = positions[path] ?? DocumentPosition()
@@ -117,7 +125,9 @@ import PDFKit
             try FileManager.default.createDirectory(at: sessionDirectory, withIntermediateDirectories: true)
             let s = WorkspaceSession(
                 tabs: tabs, selected: selected, positions: positions, sidebar: sidebarVisible,
-                preview: previewVisible, pdfPage: pdfPage, pdfZoom: pdfZoom)
+                preview: previewVisible, pdfPage: pdfPage, pdfZoom: pdfZoom,
+                showOutline: showOutline, fileTreeExpansion: fileTreeExpansion,
+                outlineTreeExpansion: outlineTreeExpansion, fileTreeSelection: fileTreeSelection)
             try JSONEncoder().encode(s).write(
                 to: sessionDirectory.appendingPathComponent("session.json"), options: .atomic)
         } catch { status = "无法保存阅读位置：" + error.localizedDescription }
@@ -131,6 +141,10 @@ import PDFKit
             previewVisible = s.preview
             pdfPage = s.pdfPage
             pdfZoom = s.pdfZoom
+            showOutline = s.showOutline ?? false
+            fileTreeExpansion = s.fileTreeExpansion ?? [:]
+            outlineTreeExpansion = s.outlineTreeExpansion ?? [:]
+            fileTreeSelection = s.fileTreeSelection
             for path in s.tabs
             where FileManager.default.fileExists(atPath: project.url.appendingPathComponent(path).path) {
                 open(path)

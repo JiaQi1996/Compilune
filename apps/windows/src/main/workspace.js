@@ -40,11 +40,12 @@ export class Workspace {
     this.session = { sidebar: true, preview: true, pdfPage: 1, pdfZoom: 1 };
     this.config = {
       root: "",
-      engine: "XeLaTeX",
+      engine: "pdfLaTeX",
       workingDirectory: "",
       outputDirectory: ".folio/build",
       shellEscape: false,
       rcFile: "",
+      bibliographyFile: "",
       autoCompile: false,
     };
     this.directory = path.join(store.directory, "workspaces", project.id);
@@ -494,6 +495,7 @@ export class Workspace {
       "workingDirectory",
       "outputDirectory",
       "rcFile",
+      "bibliographyFile",
     ]) {
       if (key in changes) {
         if (typeof changes[key] !== "string")
@@ -511,6 +513,10 @@ export class Workspace {
       )
         throw new Error("项目配置无效");
       await this.buildPaths();
+      if (this.config.bibliographyFile) {
+        if (!/\.bib$/i.test(this.config.bibliographyFile)) throw new Error("默认文献文件必须为 .bib");
+        await resolveInside(this.project.path, this.config.bibliographyFile);
+      }
       const file = await resolveInside(
         this.project.path,
         ".folio/project.json",

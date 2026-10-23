@@ -12,7 +12,7 @@ Compilune 从项目库开始，将 CodeMirror 6 源码编辑器、本地编译�
 
 ## 下载
 
-**[前往 GitHub Releases 下载安装包](https://github.com/JiaQi1996/FolioTex/releases)**
+**[前往 GitHub Releases 下载安装包](https://github.com/JiaQi1996/Compilune/releases)**
 
 根据操作系统与处理器选择安装包：
 
@@ -23,7 +23,7 @@ Compilune 从项目库开始，将 CodeMirror 6 源码编辑器、本地编译�
 | Windows 预览版 | ARM64 | `-windows-arm64-setup.exe` |
 | Windows 预览版 | Intel / AMD 64 位 | `-windows-x64-setup.exe` |
 
-可下载的版本与平台以各次发布附带的文件为准。可同时下载对应的 `.sha256` 文件校验安装包。macOS 打开 DMG 后，将 Compilune 拖入「应用程序」。TeX 发行版仍需单独安装。
+可下载的版本与平台以各次发布附带的文件为准。当前本地发布文件包括四个安装包及四份对应的 `.sha256` 校验文件。macOS 打开 DMG 后，将 Compilune 拖入「应用程序」；Windows 运行匹配芯片的 EXE 安装包。TeX 发行版仍需单独安装。
 
 ## macOS 运行截图
 
@@ -33,7 +33,7 @@ Compilune 从项目库开始，将 CodeMirror 6 源码编辑器、本地编译�
 
 ![Compilune macOS：LaTeX 源码编辑与编译后的 PDF 预览](docs/screenshots/macos-workspace.png)
 
-**项目库**：继续上次写作、置顶常用项目，或打开本地文件夹。
+**项目库**：支持项目别名、文件夹路径换行、项目置顶和更大的居中 PDF 封面。
 
 ![Compilune macOS：带置顶项目与 PDF 封面的项目库](docs/screenshots/macos-library.png)
 
@@ -53,13 +53,15 @@ Compilune 从项目库开始，将 CodeMirror 6 源码编辑器、本地编译�
 
 ## 功能
 
-- **项目库**：打开本地文件夹、置顶、排序、PDF 封面预览、归档、重新关联移动后的文件夹。
-- **源码编辑**：CodeMirror 6 语法高亮，命令、环境、自定义宏、文献、标签和文件路径补全。环境片段同步编辑 `begin` / `end` 名称，按 Enter 跳到正文。
+- **项目管理**：打开本地文件夹、可选别名、置顶、排序、归档和重新关联。重复别名、已有文件夹或已登记位置的新建操作会被阻止；不同位置的文件夹同名时弹窗建议设置别名。
+- **项目卡片**：尺寸固定，PDF 封面居中占卡片宽度的 80%。显示项目名称、可换行两行的文件夹路径和编辑时间；悬浮 1.5 秒后显示完整名称、路径或操作提示。
+- **源码编辑**：CodeMirror 6 语法高亮，命令、环境、自定义宏、文献、标签和文件路径补全。命令补全后连续提示文献键、标签、文件路径和环境名称。Enter 确认当前候选，Tab 跳到下一个占位符或环境正文；`begin` / `end` 名称同步修改。
 - **写作工具**：可展开的格式与插入工具栏、可自定义的快捷键、命令面板、快速打开、行列跳转和定义跳转。格式操作生成 LaTeX 源码，编辑区不是渲染后的所见即所得文稿。
 - **查找替换**：文件内支持正则；项目内普通文本搜索、替换预览，以及跨文件替换的整体撤销。
-- **文件导航**：文件夹优先、分级缩进、新建文件夹/TeX/Bib、项目内拖动移动文件，以及默认展开、点击跳转的 `.tex` 大纲。
-- **本地编译**：latexmk 配合 pdfLaTeX、XeLaTeX 或 LuaLaTeX；可设置主文件、工作/输出目录、指定 rc 文件与 shell escape。
-- **PDF 预览**：查找、缩放、页码、上次成功预览缓存和双向 SyncTeX。双击 PDF 跳转源码，源码中按 `⌘⇧J` 定位 PDF。
+- **文件导航**：文件夹优先、分级缩进、新建文件夹/TeX/Bib、项目内拖动移动文件，以及点击跳转的 `.tex` 大纲。文件树首次全部收起，大纲首次只展开一级，切换时分别保留展开状态和滚动位置。
+- **本地编译**：latexmk 配合 pdfLaTeX（默认）、XeLaTeX 或 LuaLaTeX；可设置主文件、工作/输出目录、指定 rc 文件与 shell escape。
+- **PDF 预览**：查找、缩放、页码、上次成功预览缓存和双向 SyncTeX。双击 PDF 跳转源码；从源码定位 PDF 时，macOS 使用 `⌘⇧J`，Windows 使用 `Ctrl+Shift+J`。
+- **剪贴板文献**：使用 `⌘⇧B`（Windows：`Ctrl+Shift+B`）校验复制的 BibTeX，追加到项目 `.bib` 底部，并在原光标处插入 `\cite{key}`。项目配置可指定默认文献文件，或在存在多个 `.bib` 时每次询问。空内容、格式错误或重复引用键不会修改文稿；一次撤销同时还原两处编辑。
 - **保存策略**：可选自动保存及 1–30 秒等待时间；手动保存后编译、自动保存后编译分别设置；未保存确认与恢复快照。
 - **个性设置**：实时跟随系统外观、独立浅色/深色主题、界面与代码字号均通过 8–30 滑动条调整、本地自定义模板，以及可选的编译过程文件清理。
 - **工具链**：自动检测 TeX 环境、提供发行版下载入口，并附带运行 `latexmk` 所需的私有 Perl；TeX 发行版仍需单独安装。
@@ -68,7 +70,7 @@ Compilune 从项目库开始，将 CodeMirror 6 源码编辑器、本地编译�
 
 ## 平台状态
 
-采用一个仓库、各平台独立目录的结构，公共编辑器放在共享包中。
+采用一个仓库、各平台独立目录的结构，共享编辑器、网页工作区和设计参数。
 
 | 平台 | 目录 | 当前状态 |
 | --- | --- | --- |
@@ -94,12 +96,27 @@ Compilune 从项目库开始，将 CodeMirror 6 源码编辑器、本地编译�
 
 ## 开始使用
 
-1. 在 [Releases](https://github.com/JiaQi1996/FolioTex/releases) 选择匹配芯片的 macOS DMG，或按下方说明从源码构建。Apple 芯片选择 `arm64`，Intel 选择 `x86_64`，打开 DMG 后将 Compilune 拖入「应用程序」。
+1. 在 [Releases](https://github.com/JiaQi1996/Compilune/releases) 选择匹配芯片的 macOS DMG，或按下方说明从源码构建。Apple 芯片选择 `arm64`，Intel 选择 `x86_64`，打开 DMG 后将 Compilune 拖入「应用程序」。
 2. 启动后进入项目库，选择「打开本地项目」，或用「新建项目」创建内置英文 `article` 文稿。
 3. 安装 MacTeX 或其他适用的 TeX 发行版。在「设置 → 工具链」检测环境或指定可执行目录，MacTeX 通常为 `/Library/TeX/texbin`。
 4. 在项目「配置」中选择主 `.tex` 文件与引擎，按 `⌘R` 编译。
 
 本地打包使用 **ad-hoc 签名**，尚未进行 Developer ID 分发签名与公证。从网络下载的版本可能需要在 macOS 中明确允许打开。
+
+### 项目名称、别名与位置
+
+新建项目时可以填写别名，也可右键项目卡片或工作区顶部的项目名称，选择「设置项目别名…」。别名只修改显示名称，保留原文件夹名称和位置。
+
+| 操作 | 处理方式 |
+| --- | --- |
+| 再次打开同一文件夹 | 复用原项目记录并保留别名。 |
+| 在已有文件夹或已登记位置新建 | 提醒并阻止新建，保留原有文件。 |
+| 创建或修改别名 | 不能与其他项目的显示名称重复，包括已归档项目；比较时忽略大小写及 Unicode 兼容形式差异。 |
+| 不同位置的文件夹同名 | 保留为独立项目，弹窗建议设置别名；也可明确选择仍使用文件夹名称。 |
+| 清空别名 | 恢复文件夹名称；存在同名项目时再次提醒。 |
+| 重新关联到另一项目已登记的位置 | 拒绝冲突的位置。 |
+
+别名与位置单独保存，升级保留原显示名称；别名校验失败时保留当前项目和输入内容，方便修改。
 
 ### 保存与自动编译
 
@@ -112,6 +129,13 @@ Compilune 从项目库开始，将 CodeMirror 6 源码编辑器、本地编译�
 双向定位依赖最新源码成功编译生成的 SyncTeX。旧缓存或修改前的 PDF 需要先重新编译；定位通常精确到源码行，空白、公式或宏展开位置可能存在偏差。
 
 开启清理后，只在编译成功时移除已识别的辅助文件，保留 PDF、SyncTeX 与源文件；失败时保留诊断文件。清理会减少增量缓存，下次编译可能变慢。
+
+### 剪贴板文献
+
+1. 在项目中创建或导入 `.bib`，并在文稿中正常加载该文献库。
+2. 在项目配置中指定默认文献文件，或选择在存在多个 `.bib` 时每次询问。
+3. 复制一条或多条 BibTeX 文献，把光标放在 `.tex` 文稿中，点击插入文献按钮，或按 `⌘⇧B` / `Ctrl+Shift+B`。
+4. 应用校验后将文献追加到 `.bib` 底部，并在原选区插入 `\cite{key}`。空内容、格式错误、重复引用键或取消操作均不会修改两处内容；一次撤销可同时还原，保存遵循当前自动保存策略。
 
 ## TeX 发行版与私有 Perl
 
@@ -139,7 +163,7 @@ xcode-select --install
 
 构建的 App 保存在已忽略的本地目录：`apps/macos/.build-arm64/artifacts/Compilune-arm64.app` 或 `apps/macos/.build-x86_64/artifacts/Compilune-x86_64.app`。
 
-仓库已包含离线编辑器 bundle，仅构建原生应用无需安装 npm 依赖。构建脚本会准备固定版本的私有 Perl，首次构建需要下载并校验源码，以及额外编译时间；也可按[私有 Perl 文档](docs/PERL_RUNTIME.md)提供离线归档。修改 `packages/editor/src.js` 后，先重新生成：
+仓库已包含离线编辑器 bundle，仅构建原生应用无需安装 npm 依赖。构建脚本会准备固定版本的私有 Perl，首次构建需要下载并校验源码，以及额外编译时间；也可按[私有 Perl 文档](docs/PERL_RUNTIME.md)提供离线归档。修改公共编辑器、BibTeX 解析器或 `packages/workbench/tooltips.js` 后，先重新生成资源：
 
 ```sh
 npm --prefix packages/editor ci
@@ -162,7 +186,7 @@ npm --prefix packages/editor run build
 ./scripts/package.sh --arch x86_64
 ```
 
-仓库根目录 `dist/` 统一存放 macOS 与 Windows 发布文件。macOS 打包输出 `arm64`、`x86_64` 两个 DMG 及各自的 `.sha256` 校验文件；Windows 打包输出 ARM64、x64 两个 EXE 及对应校验文件。每份校验文件仅包含对应 DMG；可在 `dist/` 内运行 `shasum -a 256 -c Compilune-0.2.10-arm64.sha256` 校验，Intel 版替换相应文件名。打包脚本检查应用签名与 DMG 完整性，并生成 SHA-256 校验文件。版本号位于 `VERSION`，可通过 `COMPILUNE_BUILD_NUMBER` 指定应用构建号（兼容旧变量 `FOLIO_BUILD_NUMBER`）。默认使用 ad-hoc 签名，也可通过 `COMPILUNE_SIGN_IDENTITY` 指定分发签名身份；当前发布验证未包含 Developer ID 签名与公证。
+仓库根目录 `dist/` 统一存放四个安装包及各自的四份校验文件，不放构建中间产物。每份 `.sha256` 对应一个 DMG 或 EXE；macOS 可在 `dist/` 内运行 `shasum -a 256 -c Compilune-0.2.10-arm64.sha256`，Windows 使用 `Get-FileHash -Algorithm SHA256` 后与对应文件比较。macOS 打包脚本还检查应用签名与 DMG 完整性。版本号位于 `VERSION`，可通过 `COMPILUNE_BUILD_NUMBER` 指定应用构建号。默认使用 ad-hoc 签名，也可通过 `COMPILUNE_SIGN_IDENTITY` 指定分发签名身份；当前发布验证未包含 Developer ID 签名与公证。
 
 脚本使用经本机 Command Line Tools 验证的 SwiftPM `native` 后端；新版 Swift 会提示该后端已弃用，本机当前仍可成功构建。代码中的显式 property-wrapper 别名用于绕过该环境缺少 SwiftUI macro 插件的问题。
 
@@ -196,7 +220,7 @@ apps/
   harmonyos/            HarmonyOS 移植预留，尚未实现
 packages/
   editor/               公共 CodeMirror 源码、静态资源、bundle 构建
-  workbench/            公共网页项目库、工作区、设置
+  workbench/            公共网页界面、设置、悬浮提示和项目名称校验
   design/               配色、布局参数及生成的平台适配
 scripts/                构建与打包入口、图标导出、私有 Perl 准备脚本
 docs/                   架构、平台计划、快捷键、运行时说明与截图
@@ -226,6 +250,6 @@ third_party/            私有 Perl 的固定版本与再分发许可说明
 
 ## 名称与升级兼容
 
-所有平台统一使用英文名称 **Compilune**，不再使用中文产品名。已有安装会自动沿用原应用数据目录，保留项目库、设置、恢复文件和导入模板；原 bundle/安装器标识及 `.folio` 项目配置保持兼容。
+所有平台统一使用英文名称 **Compilune**。已有安装会自动沿用原应用数据目录，保留项目库、设置、恢复文件和导入模板；既有项目配置及安装器标识保持兼容，实际存储位置与兼容细节见[架构与本地数据](docs/ARCHITECTURE.md)。
 
 原创图标源文件为 `assets/AppIcon.svg`。需要重新导出 PNG、ICO、ICNS 时，安装 librsvg 的 `rsvg-convert` 后运行 `node scripts/build-icons.mjs`。导出资源已随仓库提交，普通构建无需此工具。

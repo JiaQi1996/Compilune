@@ -6,6 +6,8 @@ This package owns the web project library, workbench layout, settings, file/outl
 - `design.css`: generated from `packages/design/tokens.json`.
 - `pdf.js`: local PDF.js viewer and source-mapping coordinates.
 - `icons.js`: SVG UI icons and escaping helpers.
+- `tooltips.js`: shared 1.5-second hover tooltips, also bundled into the editor.
+- `project-names.js`: shared alias validation and default-name conflict checks used by the Windows host and renderer.
 
 The host must expose `window.folioHost.request(action, payload)` and `onEvent(callback)`. Replies use `{ok, value}` or `{ok:false, error}`. See `apps/windows/src/main/main.js` and `preload.cjs` for the implemented contract. File/process access stays in the host; the renderer has no Node.js access. Editor documents live in a local iframe with a narrow parent-message transport.
 

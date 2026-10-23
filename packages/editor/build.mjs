@@ -26,6 +26,14 @@ const result = await build({
   legalComments: "eof",
   metafile: true,
 });
+await build({
+  absWorkingDir: editorRoot,
+  entryPoints: ["bibliography.js"],
+  bundle: true,
+  format: "cjs",
+  outfile: path.join(resourceRoot, "Bibliography.cjs"),
+  target: "es2020",
+});
 
 // Keep notices aligned with packages actually included in the editor bundle.
 const packages = new Set();

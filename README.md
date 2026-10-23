@@ -12,7 +12,7 @@ Current version: **0.2.10**. The application interface is currently primarily **
 
 ## Download
 
-**[Download installers from GitHub Releases](https://github.com/JiaQi1996/FolioTex/releases)**
+**[Download installers from GitHub Releases](https://github.com/JiaQi1996/Compilune/releases)**
 
 Choose an installer matching your platform and processor:
 
@@ -23,7 +23,7 @@ Choose an installer matching your platform and processor:
 | Windows preview | ARM64 | `-windows-arm64-setup.exe` |
 | Windows preview | Intel / AMD 64-bit | `-windows-x64-setup.exe` |
 
-Available versions and platforms depend on the assets attached to each release. Download the matching `.sha256` file to verify an installer. On macOS, open the DMG and drag Compilune into Applications. A TeX distribution must be installed separately.
+Available versions and platforms depend on the assets attached to each release. The current local release contains four installers and four matching `.sha256` files. On macOS, open the DMG and drag Compilune into Applications; on Windows, run the matching EXE installer. A TeX distribution must be installed separately.
 
 ## macOS screenshots
 
@@ -33,7 +33,7 @@ Actual macOS application windows, using demonstration projects. The current inte
 
 ![Compilune on macOS: LaTeX source editor and compiled PDF preview](docs/screenshots/macos-workspace.png)
 
-**Project library** — pick up a recent document, pin a project, or open a local folder.
+**Project library** — project aliases, wrapped folder paths, pinned projects, and larger centered PDF covers.
 
 ![Compilune on macOS: project library with pinned projects and PDF covers](docs/screenshots/macos-library.png)
 
@@ -53,13 +53,15 @@ Actual macOS application windows, using demonstration projects. The current inte
 
 ## Features
 
-- **Project library:** local folders, pinned projects, sorting, PDF cover previews, archiving, and folder relinking.
-- **Source editing:** CodeMirror 6 highlighting, command/environment completion, project macros, citations, labels, and file paths. Environment snippets mirror `begin`/`end` names and move to the body with Enter.
+- **Project management:** local folders, optional aliases, pinned projects, sorting, archiving, and folder relinking. Duplicate aliases and creation at occupied or registered locations are blocked; matching folder names at different locations prompt an alias suggestion.
+- **Library cards:** fixed-size cards with centered PDF covers at 80% of card width. Cards show the project name, a folder path that wraps to two lines, and the edited time. Hover to read complete names and paths; tooltips appear after 1.5 seconds.
+- **Source editing:** CodeMirror 6 highlighting, command/environment completion, project macros, citations, labels, and file paths. Command completion continues into citation keys, labels, paths, and environment names. Enter accepts the highlighted completion; Tab advances snippet fields or moves into an environment body. `begin`/`end` names remain linked.
 - **Writing tools:** optional formatting and insertion toolbar, configurable shortcuts, command palette, file search, line/column jumps, and definition navigation. Formatting tools insert LaTeX source; the editor is not a rendered WYSIWYG document view.
 - **Find and replace:** regular expressions within a file; project-wide plain-text search and replacement preview with grouped undo.
-- **File navigation:** folders first, nested indentation, new folders/TeX/Bib files, project-local drag moves, and a clickable, expanded `.tex` outline.
-- **Local builds:** latexmk with pdfLaTeX, XeLaTeX, or LuaLaTeX; configurable main file, working/output directories, explicit rc file, and shell escape.
-- **PDF preview:** search, zoom, page navigation, last-successful-preview caching, and bidirectional SyncTeX. Double-click a PDF location to jump to source; use `⌘⇧J` in source to locate the PDF.
+- **File navigation:** folders first, nested indentation, new folders/TeX/Bib files, project-local drag moves, and a clickable `.tex` outline. The file tree starts fully collapsed; the outline initially expands only its top level. Both retain independent expansion and scroll positions when switching.
+- **Local builds:** latexmk with pdfLaTeX (default), XeLaTeX, or LuaLaTeX; configurable main file, working/output directories, explicit rc file, and shell escape.
+- **PDF preview:** search, zoom, page navigation, last-successful-preview caching, and bidirectional SyncTeX. Double-click a PDF location to jump to source; use `⌘⇧J` on macOS or `Ctrl+Shift+J` on Windows to locate the PDF from source.
+- **Clipboard bibliography:** validate copied BibTeX, append it to a project `.bib`, and insert `\cite{key}` at the original cursor with `⌘⇧B` (Windows: `Ctrl+Shift+B`). Choose a default bibliography in project configuration or ask on each insertion when multiple files exist. Invalid input and duplicate keys make no changes; one undo reverses both edits.
 - **Saving:** optional autosave with a 1–30 second delay, separate compile-after-manual-save and compile-after-autosave settings, unsaved-change confirmation, and recovery snapshots.
 - **Personalization:** live system appearance, explicit light/dark modes, independent interface/code font sizes with 8–30 sliders, local custom templates, and optional build-file cleanup.
 - **Toolchain setup:** automatic TeX discovery, distribution download options, and a bundled private Perl runtime for `latexmk`. TeX itself is installed separately.
@@ -68,7 +70,7 @@ Editing and compilation run locally. The editor bundle, icons, and private Perl 
 
 ## Platform status
 
-One repository contains separate platform applications and a shared editor package.
+One repository contains separate platform applications and shared editor, workbench, and design packages.
 
 | Platform | Directory | Status |
 | --- | --- | --- |
@@ -94,12 +96,27 @@ The scripts build one architecture at a time. These are separate builds, not a U
 
 ## Get started
 
-1. Choose the matching macOS DMG from [Releases](https://github.com/JiaQi1996/FolioTex/releases), or build from source below. Use `arm64` for Apple Silicon and `x86_64` for Intel, then drag Compilune into Applications.
+1. Choose the matching macOS DMG from [Releases](https://github.com/JiaQi1996/Compilune/releases), or build from source below. Use `arm64` for Apple Silicon and `x86_64` for Intel, then drag Compilune into Applications.
 2. Open the app. Choose **打开本地项目** to select a project folder, or **新建项目** for the bundled English `article` template.
 3. Install MacTeX or another suitable TeX distribution. In **设置 → 工具链**, detect tools or set the executable directory (MacTeX normally uses `/Library/TeX/texbin`).
 4. Open project **配置**, select the main `.tex` file and engine, then press `⌘R` to compile.
 
 Locally packaged apps use an **ad-hoc signature** and are not Developer ID signed or notarized. macOS may require explicit approval to open a downloaded build.
+
+### Project names, aliases, and locations
+
+Set an optional alias when creating a project, or choose **设置项目别名…** from a project card or workspace-title context menu. An alias changes the displayed name while retaining the folder name and location.
+
+| Action | Behavior |
+| --- | --- |
+| Open the same folder again | Reuse its existing project record and retain its alias. |
+| Create at an occupied or registered location | Show a warning and block creation, preserving existing files. |
+| Create or edit an alias | Reject names matching another project's display name, including archived projects. Comparisons ignore case and Unicode compatibility-form differences. |
+| Use the same folder name at another location | Keep separate projects and suggest an alias in a dialog; explicitly choosing the folder name is also supported. |
+| Clear an alias | Restore the folder name, with a warning if another project has a matching name. |
+| Relink to another registered project's folder | Reject the conflicting location. |
+
+Aliases and locations are stored separately. Existing names are retained during upgrades; a rejected alias edit preserves the current project and entered text for correction.
 
 ### Save and compile behavior
 
@@ -112,6 +129,13 @@ The library and project are mutually exclusive. Opening a project closes the lib
 SyncTeX needs a successful build of the latest source. Stale or cached PDFs must be rebuilt before source mapping. Mapping is typically accurate to a source line and may be approximate for whitespace or macro expansions.
 
 Optional cleanup removes recognized auxiliary files after a successful build while retaining PDF, SyncTeX, and source files. Failed builds retain diagnostic files. Cleanup can make the next build slower.
+
+### Clipboard bibliography
+
+1. Create or import a project `.bib` file and load it in your document as usual.
+2. In project configuration, select a default bibliography or ask on each insertion when multiple files exist.
+3. Copy one or more BibTeX entries, place the cursor in a `.tex` document, and use the insertion button or `⌘⇧B` / `Ctrl+Shift+B`.
+4. Compilune validates the entries, appends them to the bibliography, and inserts `\cite{key}` at the captured selection. Empty input, invalid entries, duplicate keys, and cancellation leave both files unchanged. One undo reverses both edits; saving follows the current autosave policy.
 
 ## TeX distributions and private Perl
 
@@ -139,7 +163,7 @@ xcode-select --install
 
 Built apps stay in the ignored local build folders: `apps/macos/.build-arm64/artifacts/Compilune-arm64.app` or `apps/macos/.build-x86_64/artifacts/Compilune-x86_64.app`.
 
-The checked-in editor bundle allows the native app to build without npm. Release builds also prepare a pinned private Perl runtime; the first build needs a verified source download and additional build time. See [private Perl runtime](docs/PERL_RUNTIME.md). After changing `packages/editor/src.js`, rebuild it before building the app:
+The checked-in editor bundle allows the native app to build without npm. Release builds also prepare a pinned private Perl runtime; the first build needs a verified source download and additional build time. See [private Perl runtime](docs/PERL_RUNTIME.md). After changing the shared editor, bibliography parser, or `packages/workbench/tooltips.js`, regenerate the bundled resources before building the native app:
 
 ```sh
 npm --prefix packages/editor ci
@@ -162,7 +186,7 @@ This also refreshes the bundled editor license notices. Commit both the edited s
 ./scripts/package.sh --arch x86_64
 ```
 
-The repository-root `dist/` is shared by macOS and Windows. macOS packaging writes the `arm64` and `x86_64` DMGs and a `.sha256` checksum file for each; Windows packaging adds its ARM64/x64 EXE installers and matching checksums. Each checksum file covers its corresponding DMG; verify it inside `dist/` with `shasum -a 256 -c Compilune-0.2.10-arm64.sha256` (or the Intel filename). The packager verifies the app signature and DMG and writes SHA-256 checksums. `VERSION` holds the release version; `COMPILUNE_BUILD_NUMBER` optionally overrides the bundle build number (`FOLIO_BUILD_NUMBER` remains a compatibility fallback). Builds use ad-hoc signing by default; a distribution signing identity can be supplied with `COMPILUNE_SIGN_IDENTITY`. Developer ID signing and notarization are not included in the published local-build verification.
+The repository-root `dist/` is shared by macOS and Windows and contains only four installers and their four matching checksums. Each `.sha256` file covers its corresponding DMG or EXE. For example, run `shasum -a 256 -c Compilune-0.2.10-arm64.sha256` inside `dist/` on macOS, or compare `Get-FileHash -Algorithm SHA256` with the matching file on Windows. The macOS packager also verifies the app signature and DMG. `VERSION` holds the release version; `COMPILUNE_BUILD_NUMBER` optionally overrides the bundle build number. Builds use ad-hoc signing by default; a distribution signing identity can be supplied with `COMPILUNE_SIGN_IDENTITY`. Developer ID signing and notarization are not included in the published local-build verification.
 
 The scripts use SwiftPM's `native` backend for the tested Command Line Tools environment. Newer Swift tools report this backend as deprecated; it currently builds successfully here. Explicit property-wrapper aliases avoid a missing SwiftUI macro plugin in that environment.
 
@@ -196,7 +220,7 @@ apps/
   harmonyos/            Planned port; no implementation yet
 packages/
   editor/               Shared CodeMirror source, static assets, and bundle builder
-  workbench/            Shared web project library, workspace and settings
+  workbench/            Shared web UI, settings, tooltips and project-name validation
   design/               Semantic colors, layout tokens and generated adapters
 scripts/                Build/package entry points, icon export, private Perl preparation
 docs/                   Architecture, platform plan, shortcuts, runtime notes, screenshots
@@ -226,6 +250,6 @@ Bundled Perl and its components retain their original licenses; runtime packages
 
 ## Name and upgrade compatibility
 
-The application uses the English name **Compilune** on every platform. Existing installations retain their previous application-data directory automatically, along with project libraries, settings, recovery files and imported templates. Legacy bundle/installer identifiers and `.folio` project metadata remain stable for upgrade compatibility.
+The application uses the English name **Compilune** on every platform. Existing installations retain their previous application-data directory automatically, along with project libraries, settings, recovery files and imported templates. Existing project configuration and installer identifiers remain compatible; actual storage locations and compatibility details are documented in [Architecture and local storage](docs/ARCHITECTURE.md).
 
 The original icon source is `assets/AppIcon.svg`. To regenerate PNG, ICO and ICNS assets, install `rsvg-convert` (librsvg) and run `node scripts/build-icons.mjs`. Generated assets are committed, so normal application builds do not require that tool.

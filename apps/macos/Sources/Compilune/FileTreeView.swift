@@ -20,7 +20,8 @@ struct FileTreeView: View {
                 sectionButton("大纲", outline: true)
                 Spacer(minLength: 0)
             }.padding(.horizontal, 10).padding(.vertical, 6)
-            if workspace.showOutline {
+            // Keep both scroll views mounted so each retains its own reading position.
+            ZStack(alignment: .topLeading) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(
@@ -30,7 +31,9 @@ struct FileTreeView: View {
                         ) { node in DocumentOutlineBranch(workspace: workspace, node: node) }
                     }.padding(.horizontal, 8).padding(.vertical, 4)
                 }
-            } else {
+                .opacity(workspace.showOutline ? 1 : 0)
+                .allowsHitTesting(workspace.showOutline)
+                .accessibilityHidden(!workspace.showOutline)
                 GeometryReader { geometry in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
@@ -39,7 +42,10 @@ struct FileTreeView: View {
                             }
                             Color.clear.frame(minHeight: 100, maxHeight: .infinity).frame(maxWidth: .infinity)
                                 .contentShape(Rectangle())
-                                .onTapGesture { workspace.fileTreeSelection = nil }
+                                .onTapGesture {
+                                    workspace.fileTreeSelection = nil
+                                    workspace.persistSessionSoon()
+                                }
                                 .contextMenu { NewItemActions(workspace: workspace, parent: "") }
                                 .dropDestination(for: String.self) { items, _ in
                                     workspace.moveDropped(items, to: "")
@@ -48,12 +54,16 @@ struct FileTreeView: View {
                         }.frame(minHeight: geometry.size.height, alignment: .top).padding(.horizontal, 8)
                     }
                 }
+                .opacity(workspace.showOutline ? 0 : 1)
+                .allowsHitTesting(!workspace.showOutline)
+                .accessibilityHidden(workspace.showOutline)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private func sectionButton(_ title: String, outline: Bool) -> some View {
         Button {
             workspace.showOutline = outline
+            workspace.persistSessionSoon()
         } label: {
             Text(title).fontWeight(workspace.showOutline == outline ? .semibold : .regular)
                 .padding(.horizontal, 10).padding(.vertical, 5)
@@ -67,7 +77,7 @@ struct FileTreeBranch: View {
     @ObservedObject var workspace: Workspace
     let node: SourceNode
     var depth = 0
-    @ViewState private var expanded = true
+    private var expanded: Bool { workspace.treeExpanded(node.id, outline: false, depth: depth) }
     @ViewState private var dropTarget = false
     private var directory: Bool { node.children != nil }
     private var destination: String { directory ? node.path : workspace.directoryForItem(node.path) }
@@ -76,7 +86,7 @@ struct FileTreeBranch: View {
             HStack(spacing: 5) {
                 if directory {
                     Button {
-                        expanded.toggle()
+                        workspace.setTreeExpanded(!expanded, id: node.id, outline: false)
                         workspace.fileTreeSelection = node.path
                     } label: {
                         Image(systemName: expanded ? "chevron.down" : "chevron.right").font(
@@ -89,7 +99,12 @@ struct FileTreeBranch: View {
                 }
                 Button {
                     workspace.fileTreeSelection = node.path
-                    if directory { expanded.toggle() } else { workspace.open(node.path) }
+                    if directory {
+                        workspace.setTreeExpanded(!expanded, id: node.id, outline: false)
+                    } else {
+                        workspace.open(node.path)
+                    }
+                    workspace.persistSessionSoon()
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: directory ? (expanded ? "folder.fill" : "folder") : "doc.text")
@@ -122,7 +137,7 @@ struct FileTreeBranch: View {
                 .draggable(workspace.project.id.uuidString + "|" + node.path)
                 .dropDestination(for: String.self) { items, _ in
                     let moved = workspace.moveDropped(items, to: destination)
-                    if moved { expanded = true }
+                    if moved, directory { workspace.setTreeExpanded(true, id: node.id, outline: false) }
                     return moved
                 } isTargeted: {
                     dropTarget = $0

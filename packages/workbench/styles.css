@@ -416,12 +416,16 @@ p {
     font-size: calc(var(--ui-size) * 1.153846);
     font-weight: 550;
     margin-top: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .continue-card .continue-link {
     color: var(--accent);
     display: flex;
     gap: 8px;
     align-items: center;
+    flex-shrink: 0;
 }
 .library-footer {
     display: flex;
@@ -1327,6 +1331,8 @@ dialog::backdrop {
     color: var(--danger);
     min-height: 16px;
     margin-top: 8px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 .search-dialog {
     width: 750px;
@@ -1495,7 +1501,7 @@ dialog::backdrop {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin: 22px 0 32px;
+    margin: 0 0 20px;
 }
 .library-brand img {
     width: 42px;
@@ -1558,18 +1564,22 @@ dialog::backdrop {
     font-size: calc(var(--ui-size) * 2.307692);
 }
 .project-grid {
-    grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
+    --project-card-width: 243px;
+    grid-template-columns: repeat(auto-fill, var(--project-card-width));
+    justify-content: start;
 }
 .project-card {
     flex-direction: column;
     gap: 0;
     padding: 0;
     overflow: hidden;
-    min-height: 220px;
+    min-width: 0;
+    min-height: 0;
 }
 .project-cover {
     width: 100%;
-    height: 150px;
+    height: 220px;
+    padding: 12px 0 0;
     border: 0;
     border-bottom: 1px solid var(--line);
     border-radius: 0;
@@ -1577,8 +1587,11 @@ dialog::backdrop {
     background: var(--paper);
 }
 .project-cover img {
+    width: calc(var(--project-card-width) * 0.8);
+    flex-shrink: 0;
     object-fit: cover;
     object-position: top;
+    background: #fff;
 }
 .project-cover.fallback:before {
     width: 94px;
@@ -1589,13 +1602,26 @@ dialog::backdrop {
 }
 .project-info {
     padding: 13px 15px;
+    flex: none;
+    height: max(120px, calc(var(--ui-size) * 5.6 + 40px));
 }
 .project-info h3 {
     margin-bottom: 5px;
-    max-width: calc(100% - 60px);
+    max-width: 100%;
 }
 .project-path {
     margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.project-date {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 60px;
 }
 .project-badge {
     display: none;
@@ -1610,17 +1636,18 @@ dialog::backdrop {
     bottom: 12px;
 }
 .project-grid.list-view {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
 }
 .project-grid.list-view .project-cover {
     display: none;
 }
 .project-grid.list-view .project-card {
-    min-height: 100px;
+    min-height: 0;
 }
 .continue-card .continue-mark {
     width: 140px;
     height: 92px;
+    flex-shrink: 0;
     border-radius: 5px;
     overflow: hidden;
 }
@@ -1702,9 +1729,6 @@ dialog::backdrop {
 @media (max-width: 1150px) {
     .library-content {
         padding: 26px 24px;
-    }
-    .project-grid {
-        grid-template-columns: repeat(2, minmax(220px, 1fr));
     }
     .library-hero {
         align-items: flex-start;

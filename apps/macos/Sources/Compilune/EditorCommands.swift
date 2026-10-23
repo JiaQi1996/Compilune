@@ -33,6 +33,7 @@ struct EditorCommand: Identifiable {
         .init(id: "math", title: "行内公式", key: "Mod-Shift-m"),
         .init(id: "displayMath", title: "独立公式", key: "Mod-Shift-Alt-m"),
         .init(id: "cite", title: "插入文献引用", key: "Mod-Shift-c"),
+        .init(id: "pasteCitation", title: "插入剪贴板文献", key: "Mod-Shift-b"),
         .init(id: "ref", title: "插入交叉引用", key: "Mod-Shift-r"),
         .init(id: "image", title: "选择图片", key: "Mod-Shift-i"),
         .init(id: "table", title: "插入表格", key: "Mod-Shift-Alt-t"),
@@ -100,4 +101,8 @@ struct WorkspaceSession: Codable {
     var preview = true
     var pdfPage = 1
     var pdfZoom = 0
+    var showOutline: Bool?
+    var fileTreeExpansion: [String: Bool]?
+    var outlineTreeExpansion: [String: Bool]?
+    var fileTreeSelection: String?
 }

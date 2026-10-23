@@ -24,7 +24,8 @@ struct EditorHost: NSViewRepresentable {
     func updateNSView(_ view: WKWebView, context: Context) {
         let c = context.coordinator
         c.options = [
-            "type": "options", "size": prefs.codeSize, "uiSize": prefs.uiSize, "bindings": prefs.commandBindings,
+            "type": "options", "size": prefs.codeSize, "uiSize": prefs.uiSize,
+            "bindings": prefs.commandBindings,
             "globalHistory": true, "dark": prefs.scheme == .dark,
             "toolbarVisible": workspace.showFormattingToolbar,
         ]
@@ -83,6 +84,7 @@ struct EditorHost: NSViewRepresentable {
             case "undo": workspace.undoEdit()
             case "redo": workspace.redoEdit()
             case "insertImage": workspace.insertImage()
+            case "pasteCitation": workspace.insertClipboardCitation(body)
             case "notice": workspace.status = body["message"] as? String ?? ""
             case "save":
                 workspace.saveManually()

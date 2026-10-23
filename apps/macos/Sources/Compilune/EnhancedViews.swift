@@ -8,13 +8,13 @@ struct DocumentOutlineBranch: View {
     @ObservedObject var workspace: Workspace
     let node: OutlineNode
     var depth = 0
-    @ViewState private var expanded = true
+    private var expanded: Bool { workspace.treeExpanded(node.id, outline: true, depth: depth) }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 5) {
                 if node.children != nil {
                     Button {
-                        expanded.toggle()
+                        workspace.setTreeExpanded(!expanded, id: node.id, outline: true)
                     } label: {
                         Image(systemName: expanded ? "chevron.down" : "chevron.right").font(
                             .system(size: 9, weight: .semibold)
@@ -59,8 +59,16 @@ struct ProjectConfigurationView: View {
                     }
                 }
                 Picker("引擎", selection: $workspace.project.engine) {
-                    ForEach(["XeLaTeX", "pdfLaTeX", "LuaLaTeX"], id: \.self) { Text($0) }
+                    ForEach(["pdfLaTeX", "XeLaTeX", "LuaLaTeX"], id: \.self) { Text($0) }
                 }.help("选择当前项目使用的本地 TeX 编译引擎")
+                Picker("插入文献的默认文件", selection: $workspace.bibliographyFile) {
+                    Text("每次询问（存在多个 .bib 时）").tag("")
+                    ForEach(workspace.files.filter { $0.pathExtension.lowercased() == "bib" }, id: \.path) {
+                        url in
+                        Text(relative(url, to: workspace.project.url)).tag(
+                            relative(url, to: workspace.project.url))
+                    }
+                }.help("指定剪贴板文献的默认目标；每次询问模式下，仅有一个 .bib 时直接使用该文件")
                 Toggle("本项目自动保存后自动编译", isOn: $workspace.autoCompile).disabled(!prefs.autoSaveEnabled).help(
                     "自动保存成功后编译本项目；全局自动编译开启时，所有项目都会自动编译")
                 TextField("工作目录（项目相对路径；留空使用主文件目录）", text: $workspace.workingDirectory)
@@ -146,18 +154,24 @@ struct PDFToolbar: View {
 }
 struct ProjectCover: View {
     let project: Project
+    var height: CGFloat = 220
     var body: some View {
-        ZStack {
-            sage.opacity(0.09)
-            if let image = ThumbnailStore.shared.thumbnail(project) {
-                Image(nsImage: image).resizable().scaledToFit().padding(.top, 14).padding(.horizontal, 35)
-            } else {
-                VStack(spacing: 10) {
-                    Image(systemName: "doc.text").font(.system(size: 35)).foregroundStyle(sage)
-                    Text("尚未生成预览").font(.caption).foregroundStyle(.secondary)
-                }.padding(25).background(.background, in: RoundedRectangle(cornerRadius: 4)).padding(.top, 14)
+        GeometryReader { geometry in
+            ZStack(alignment: .top) {
+                sage.opacity(0.09)
+                if let image = ThumbnailStore.shared.thumbnail(project) {
+                    Image(nsImage: image).resizable().scaledToFill()
+                        .frame(width: max(1, geometry.size.width * 0.8), height: height - 12, alignment: .top)
+                        .background(.white).clipped().padding(.top, 12)
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "doc.text").font(.system(size: 35)).foregroundStyle(sage)
+                        Text("尚未生成预览").font(.caption).foregroundStyle(.secondary)
+                    }.padding(25).background(.background, in: RoundedRectangle(cornerRadius: 4))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
-        }.frame(height: 155).clipped()
+        }.frame(height: height).clipped()
     }
 }
 struct SplitAutosave: NSViewRepresentable {
@@ -277,7 +291,8 @@ struct SettingsView: View {
             ToolchainSettingsView().tabItem { Label("工具链", systemImage: "terminal") }
             VStack(alignment: .leading, spacing: 14) {
                 Text("自定义模板").font(.title2)
-                Text("导入时会复制到应用的本地模板库，删除原文件夹后仍可使用，更新软件时保留。请将图片、cls、bib 等依赖放在模板文件夹内；新建项目会再复制一份，修改项目不会影响模板。").foregroundStyle(.secondary)
+                Text("导入时会复制到应用的本地模板库，删除原文件夹后仍可使用，更新软件时保留。请将图片、cls、bib 等依赖放在模板文件夹内；新建项目会再复制一份，修改项目不会影响模板。")
+                    .foregroundStyle(.secondary)
                 List(templates.templates, id: \.self) { name in
                     HStack {
                         Text(name)

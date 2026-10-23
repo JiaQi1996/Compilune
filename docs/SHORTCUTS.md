@@ -25,6 +25,8 @@
 | 注释 / 有序 / 无序列表 | `⌘/` / `⌘⇧7` / `⌘⇧8` |
 | 一级 / 二级 / 三级标题 | `⌘⌥1` / `⌘⌥2` / `⌘⌥3` |
 | 行内 / 独立公式 | `⌘⇧M` / `⌘⌥⇧M` |
+| 校验并插入剪贴板 BibTeX 文献 | `⌘⇧B` |
+| 接受补全 / 下一个占位符或环境正文 | `Enter` / `Tab` |
 | 文献 / 交叉引用 / 图片 | `⌘⇧C` / `⌘⇧R` / `⌘⇧I` |
 | 表格 / 链接 | `⌘⌥⇧T` / `⌘L` |
 | 代码字号增 / 减 / 重置 | `⌘=` / `⌘-` / `⌘0` |
@@ -48,6 +50,8 @@ Most Command shortcuts use Ctrl, and Option uses Alt. The Windows settings show 
 | Quick open / line-column / sections | `Ctrl+P` / `Ctrl+G` / `Ctrl+Shift+O` |
 | Definition / back / forward | `F12` / `Alt+Left` / `Alt+Right` |
 | Project search and replacement preview | `Ctrl+Shift+F` |
+| Insert BibTeX from clipboard / 插入剪贴板文献 | `Ctrl+Shift+B` |
+| Accept completion / next snippet field | `Enter` / `Tab` |
 | Source to PDF | `Ctrl+Shift+J` |
 | Command palette / completion | `Ctrl+Shift+P` / `F5` |
 

@@ -8,6 +8,7 @@ import {
   protocol,
   net,
   shell,
+  clipboard,
 } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -24,6 +25,7 @@ import {
   atomicWrite,
 } from "./files.js";
 import { findToolchain } from "./compiler.js";
+import { citationClipboard, insertClipboardCitation } from "./bibliography.js";
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -235,20 +237,48 @@ const actions = {
     }
   },
   chooseProject: async () => {
-    const folder = await chooseFolder("打开 LaTeX 项目");
+    const selected = await chooseFolder("打开 LaTeX 项目");
+    const folder = selected ? await fs.realpath(selected) : null;
     if (folder) {
+      if (!(await store.projectAt(folder))) {
+        const conflicts = store.nameConflicts(path.basename(folder));
+        if (conflicts.length) {
+          const result = await dialog.showMessageBox(window, {
+            type: "warning", message: "不同位置存在同名项目",
+            detail: "建议打开后在项目名称的右键菜单中设置别名，方便区分。\n当前位置：" + folder + "\n已有项目：\n" + conflicts.map((p) => p.path).join("\n"),
+            buttons: ["继续打开", "取消"], defaultId: 1, cancelId: 1, noLink: true,
+          });
+          if (result.response !== 0) return false;
+        }
+      }
       const project = await store.register(folder);
       return openProject(project);
     }
     return false;
   },
   createProject: async (p) => {
-    const parent = await chooseFolder("选择新项目的保存位置");
-    if (parent)
-      return openProject(
-        await store.create(parent, p.name || "Untitled", p.template || null),
-      );
-    return false;
+    try {
+      const alias = store.validateAlias(p.alias || "");
+      const parent = await chooseFolder("选择新项目的保存位置");
+      if (!parent) return false;
+      const name = validName(p.name || "Untitled"), folder = path.join(parent, name);
+      if (await store.projectAt(folder) || await fs.lstat(folder).then(() => true, (error) => { if (error.code === "ENOENT") return false; throw error; }))
+        throw new Error("此位置已有文件夹或项目，不能重复新建，也不会覆盖原文件。\n" + folder + "\n请打开已有项目，或选择不同名称、保存位置。");
+      const conflicts = alias ? [] : store.nameConflicts(name);
+      if (conflicts.length) {
+        const result = await dialog.showMessageBox(window, {
+          type: "warning", message: "不同位置存在同名项目",
+          detail: "建议设置项目别名，方便区分。\n当前位置：" + folder + "\n已有项目：\n" + conflicts.map((row) => row.path).join("\n"),
+          buttons: ["返回设置别名", "仍使用文件夹名称", "取消"], defaultId: 0, cancelId: 2, noLink: true,
+        });
+        if (result.response === 0) return { editProject: true };
+        if (result.response !== 1) return false;
+      }
+      return await openProject(await store.create(parent, name, p.template || null, alias, conflicts.length > 0));
+    } catch (error) {
+      await dialog.showMessageBox(window, { type: "warning", message: "未创建项目", detail: error.message, buttons: ["返回修改"], noLink: true });
+      return { editProject: true };
+    }
   },
   openProject: async (p) => {
     const project = store.projects.find((row) => row.id === p.id);
@@ -288,7 +318,29 @@ const actions = {
       )
         return false;
       project.archived = !project.archived;
-    } else if (p.action === "rename") project.name = validName(p.name);
+    } else if (p.action === "rename") {
+      try {
+        const alias = store.validateAlias(p.name, project.id);
+        const conflicts = alias ? [] : store.nameConflicts(path.basename(project.path), project.id);
+        if (conflicts.length) {
+          const result = await dialog.showMessageBox(window, {
+            type: "warning", message: "不同位置存在同名项目",
+            detail: "清空别名后将恢复文件夹名称，建议设置别名以区分项目。\n当前位置：" + project.path + "\n已有项目：\n" + conflicts.map((row) => row.path).join("\n"),
+            buttons: ["返回设置别名", "仍使用文件夹名称", "取消"], defaultId: 0, cancelId: 2, noLink: true,
+          });
+          if (result.response === 0) return { editAlias: true };
+          if (result.response !== 1) return false;
+        }
+        await store.setAlias(project.id, alias, conflicts.length > 0);
+      } catch (error) {
+        await dialog.showMessageBox(window, { type: "warning", message: "别名未保存", detail: error.message, buttons: ["返回修改"], noLink: true });
+        return { editAlias: true };
+      }
+      if (workspace?.project.id === project.id) {
+        workspace.project.name = project.name;
+        workspace.project.alias = project.alias;
+      }
+    }
     else if (p.action === "reveal") {
       shell.showItemInFolder(project.path);
       return;
@@ -301,17 +353,18 @@ const actions = {
       const folder = await chooseFolder("重新关联项目文件夹");
       if (!folder) return;
       const real = await fs.realpath(folder);
-      if (
-        store.projects.some(
-          (other) =>
-            other.id !== project.id &&
-            (process.platform === "win32"
-              ? other.path.toLowerCase() === real.toLowerCase()
-              : other.path === real),
-        )
-      )
+      if (await store.projectAt(real, project.id))
         throw new Error("这个文件夹已在项目库中");
-      project.path = real;
+      const conflicts = project.alias ? [] : store.nameConflicts(path.basename(real), project.id);
+      if (conflicts.length) {
+        const result = await dialog.showMessageBox(window, {
+          type: "warning", message: "不同位置存在同名项目",
+          detail: "建议先设置项目别名，再重新关联。\n当前位置：" + real + "\n已有项目：\n" + conflicts.map((row) => row.path).join("\n"),
+          buttons: ["仍使用文件夹名称", "取消"], defaultId: 1, cancelId: 1, noLink: true,
+        });
+        if (result.response !== 0) return false;
+      }
+      await store.relocate(project.id, real, conflicts.length > 0);
     } else if (p.action === "remove") {
       if (
         workspace?.project.id === project.id &&
@@ -322,6 +375,7 @@ const actions = {
     } else throw new Error("未知项目操作");
     await store.persist();
     emit({ type: "library", ...library() });
+    if (workspace?.project.id === project.id) workspace.publish();
     return true;
   },
   openFile: async (p) => {
@@ -361,6 +415,19 @@ const actions = {
         300,
       );
     }
+  },
+  citationClipboard: async (p) => {
+    const ws = requireWorkspace();
+    if (p.projectId !== ws.project.id) throw new Error("项目已切换，请重试");
+    if (!/\.tex$/i.test(p.path) || ws.selected !== p.path)
+      throw new Error("请先在 TeX 文稿中定位插入位置");
+    return citationClipboard(ws, clipboard.readText());
+  },
+  pasteCitation: async (p) => {
+    const ws = requireWorkspace();
+    if (p.projectId !== ws.project.id) throw new Error("项目已切换，请重试");
+    const file = await insertClipboardCitation(ws, p);
+    notice("已追加文献到 " + file + " 并插入引用");
   },
   save: async () => {
     if (showingLibrary) return;
@@ -409,10 +476,27 @@ const actions = {
   },
   session: async (p) => {
     const ws = requireWorkspace();
+    if (p.projectId && p.projectId !== ws.project.id) return;
     for (const key of ["sidebar", "preview"])
       if (typeof p[key] === "boolean") ws.session[key] = p[key];
     for (const key of ["pdfPage", "pdfZoom"])
       if (Number.isFinite(p[key])) ws.session[key] = p[key];
+    if (p.navigation && typeof p.navigation === "object") {
+      const navigation = p.navigation;
+      const expansion = (value) => Object.fromEntries(
+        Object.entries(value && typeof value === "object" ? value : {})
+          .filter(([, expanded]) => typeof expanded === "boolean"),
+      );
+      const scroll = (mode) => Number.isFinite(navigation.scroll?.[mode])
+        ? Math.max(0, navigation.scroll[mode]) : 0;
+      ws.session.navigation = {
+        mode: navigation.mode === "outline" ? "outline" : "files",
+        files: expansion(navigation.files),
+        outline: expansion(navigation.outline),
+        selection: typeof navigation.selection === "string" ? navigation.selection : "",
+        scroll: { files: scroll("files"), outline: scroll("outline") },
+      };
+    }
     await ws.persistSession();
   },
   closeTab: async (p) => {

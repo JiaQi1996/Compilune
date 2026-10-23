@@ -78,14 +78,19 @@ struct OutlineNode: Identifiable {
                     id: "file:" + path, label: URL(fileURLWithPath: path).lastPathComponent, path: path,
                     line: 1, kind: "file"))
             var stack: [(Int, Branch)] = []
+            var occurrences: [String: Int] = [:]
             for symbol in (grouped[path] ?? []).sorted(by: { $0.offset < $1.offset }) {
                 guard
                     ["section", "command", "environment", "class", "dependency", "option"].contains(
                         symbol.kind)
                 else { continue }
+                // Source offsets change while typing; labels and occurrence counts keep UI state stable.
+                let identity = "symbol:\(path):\(symbol.kind):\(symbol.detail):\(symbol.label)"
+                let occurrence = occurrences[identity, default: 0]
+                occurrences[identity] = occurrence + 1
                 let branch = Branch(
                     OutlineNode(
-                        id: "symbol:\(path):\(symbol.offset):\(symbol.kind)", label: symbol.label, path: path,
+                        id: "\(identity):\(occurrence)", label: symbol.label, path: path,
                         line: symbol.line, kind: symbol.kind, detail: symbol.detail))
                 if symbol.kind == "section" {
                     let level = sectionLevels[symbol.detail] ?? 2

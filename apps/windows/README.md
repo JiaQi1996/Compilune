@@ -38,7 +38,7 @@ Compilune-0.2.10-windows-x64-setup.sha256
 
 NSIS intermediates stay in ignored `.build/` folders. Root `dist/` contains only the macOS DMGs, Windows EXE installers, and their matching checksums. Installers are unsigned; publishing/signing is a separate release step. Compare each EXE's PowerShell `Get-FileHash -Algorithm SHA256` result with its matching checksum file.
 
-For offline packaging, `FOLIO_ELECTRON_DIST` may point to a local directory containing the official architecture-specific Electron ZIPs. Verify their SHA-256 against the pinned Electron package before using this override. The default uses the normal builder download flow.
+For offline packaging, the [packaging script](scripts/package.mjs) supports an override pointing to a local directory containing the official architecture-specific Electron ZIPs. Verify their SHA-256 against the pinned Electron package before using it. The default uses the normal builder download flow.
 
 ## Structure and behavior
 
@@ -48,11 +48,13 @@ For offline packaging, `FOLIO_ELECTRON_DIST` may point to a local directory cont
 - `../../packages/editor/`: shared CodeMirror and parent-message transport.
 - `../../packages/design/`: common colors and layout parameters.
 
-The renderer has no Node integration. A narrow preload bridge serves only the local `folio://app/` origin. Project file paths are bounded to their root. Compiler execution uses argument arrays without shell interpolation. Shell escape and implicit latexmk rc files are disabled by default; project configuration can opt in explicitly.
+The renderer has no Node integration. A narrow preload bridge serves only the local application origin; its exact compatibility identifiers are defined in [the host](src/main/main.js). Project file paths are bounded to their root. Compiler execution uses argument arrays without shell interpolation. Shell escape and implicit latexmk rc files are disabled by default; project configuration can opt in explicitly.
 
 Windows has one active project per instance. Returning to the library closes it after Save/Discard/Cancel confirmation when dirty; opening another project or quitting uses the same safeguards. Cancel retains the project. Autosave defaults on; both compile-after-save options default off. PDF find and formatting controls start hidden. Follow the [interface contract](../../docs/INTERFACE.md).
 
-Registry, settings, sessions and recovery live in Electron's user-data directory, normally `%APPDATA%/Compilune/`; existing installations automatically retain the legacy data directory. Project config is `.folio/project.json`; default output is `.folio/build` relative to the working directory. Recovery snapshots are private user data.
+Registry, settings, sessions and recovery live in Electron's user-data directory, normally `%APPDATA%/Compilune/`; existing installations automatically retain the legacy data directory. Project configuration and build-output locations remain compatible with existing projects; see [local storage](../../docs/ARCHITECTURE.md) for their exact paths. Recovery snapshots are private user data.
+
+Project cards share the latest library layout: centered PDF covers at 80% of card width, two-line folder paths, edited times and 1.5-second tooltips. Project aliases are checked for display-name conflicts, duplicate locations cannot be created, and matching folder names at different locations prompt an alias suggestion. Clipboard BibTeX insertion uses `Ctrl+Shift+B`; chained completion uses Enter to accept a candidate and Tab to advance snippet fields. See the [main README](../../README.md) for the complete workflow.
 
 ## Verification status
 
@@ -65,5 +67,7 @@ Local workflow checks passed on the macOS Electron development host: project ope
 ARM64 与 Intel/AMD x64 分别打包。`package` 输出两个 EXE 和两份 SHA-256 到仓库根目录 `dist/`，与 macOS 的 DMG 和校验文件统一存放；中间产物保留在已忽略的 `.build/` 中。Windows 代码签名尚未配置。
 
 界面以 macOS 为基准，共用工作区、设计参数和 CodeMirror，快捷键显示 Ctrl。项目库与单个项目界面互斥，返回项目库先处理未保存内容。Windows 默认推荐 TeX Live，另提供 MiKTeX 的按需安装入口，说明初始体积、联网补包与安装后离线使用的区别；尚未实现应用内自动下载安装。ARM 虚拟机内的 ARM64 原生与 x64 仿真界面、安装与启动已验证；MiKTeX 的 pdfLaTeX 真实编译、PDF 渲染/搜索、双向 SyncTeX、辅助文件清理及工具安装后的 PATH 刷新均已在两个架构验证。TeX Live 及 x64 实机仍未验证。验证代码不提交 GitHub。
+
+项目卡片同步采用 PDF 宽度占 80%、路径两行换行、编辑时间和 1.5 秒悬浮提示。重复别名和同位置重复新建会被阻止；不同位置同名时建议设置别名。使用 `Ctrl+Shift+B` 插入剪贴板 BibTeX 并引用，连续补全中 Enter 确认候选、Tab 切换占位符。完整使用说明见[中文 README](../../README.zh-CN.md)。
 
 Templates are copied to the persistent local template library during import. Deleting the original folder does not affect a successfully imported template; PDF images, class/style and bibliography files within that folder are retained. Creating a project makes a separate copy. 应用更新时保留本地模板库；删除原模板文件夹不影响已导入副本。

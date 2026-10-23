@@ -1,5 +1,8 @@
 import { icon, escapeHTML as esc } from "./icons.js";
 import { PDFPreview } from "./pdf.js";
+import { installTooltips } from "./tooltips.js";
+import { aliasError, projectAlias } from "./project-names.js";
+installTooltips();
 const $ = (selector) => document.querySelector(selector);
 const state = {
   projects: [],
@@ -16,7 +19,9 @@ const state = {
   libraryGrid: true,
   view: "library",
   mode: "files",
-  collapsed: new Set(),
+  fileExpansion: new Map(),
+  outlineExpansion: new Map(),
+  treeScroll: { files: 0, outline: 0 },
   treeSelection: "",
   format: false,
   ready: false,
@@ -104,16 +109,8 @@ function projectMenu(project, event) {
     ],
     [
       "file",
-      "修改显示名称",
-      async () => {
-        const name = await promptText("项目显示名称", "名称", project.name);
-        if (name)
-          await request("projectAction", {
-            id: project.id,
-            action: "rename",
-            name,
-          });
-      },
+      "设置项目别名…",
+      () => editProjectAlias(project),
     ],
     [
       "folder",
@@ -186,8 +183,8 @@ function renderLibrary() {
     const card = document.createElement("article");
     card.className = "project-card";
     card.tabIndex = 0;
-    card.title = "双击打开：" + project.path;
-    card.innerHTML = `<div class="project-cover ${project.cover ? "" : "fallback"}"></div><div class="project-info"><h3>${esc(project.name)}</h3><div class="project-path" title="${esc(project.path)}">${esc(project.path)}</div><div class="project-date">${esc((project.engine || "XeLaTeX") + " · " + formatDate(project.edited))}</div><span class="project-badge">本地项目</span></div>`;
+    card.title = "双击打开项目：" + project.name;
+    card.innerHTML = `<div class="project-cover ${project.cover ? "" : "fallback"}"></div><div class="project-info"><h3 title="${esc(project.name)}">${esc(project.name)}</h3><div class="project-path" title="${esc(project.path)}">${esc(project.path)}</div><div class="project-date">${esc(formatDate(project.edited))}</div><span class="project-badge">本地项目</span></div>`;
     if (project.cover?.startsWith("data:image/png;base64,")) {
       const image = document.createElement("img");
       image.src = project.cover;
@@ -232,7 +229,7 @@ function renderLibrary() {
   if (recent && state.libraryFilter === "all" && !query) {
     const row = document.createElement("div");
     row.className = "continue-card";
-    row.innerHTML = `<div class="continue-mark">${icon("clock", 24)}</div><div class="continue-info"><small>继续上次的写作</small><h3>${esc(recent.name)}</h3></div>`;
+    row.innerHTML = `<div class="continue-mark">${icon("clock", 24)}</div><div class="continue-info"><small>继续上次的写作</small><h3 title="${esc(recent.name)}">${esc(recent.name)}</h3></div>`;
     const open = button("chevron", "继续写作", "continue-link");
     open.innerHTML = "继续写作 " + icon("chevron", 16);
     open.onclick = () =>
@@ -261,6 +258,8 @@ function formatDate(time) {
 function updateWorkspace(ws) {
   const previous = state.ws;
   state.ws = ws;
+  const projectChanged = previous?.project.id !== ws.project.id;
+  if (projectChanged) restoreNavigation(ws);
   $("#library").hidden = state.view !== "library";
   $("#workspace").hidden = state.view !== "workspace";
   $("#window-title").textContent =
@@ -294,16 +293,17 @@ function updateWorkspace(ws) {
   $("#project-config").innerHTML =
     icon("settings", 15) +
     `<span class="config-main">${esc(ws.config.root || "选择主文件")}</span><span>${esc(ws.config.engine)}</span>`;
-  if (previous?.selected !== ws.selected)
+  if (!projectChanged && previous?.selected !== ws.selected)
     state.treeSelection = ws.selected || "";
   if (
-    !previous ||
+    projectChanged ||
     JSON.stringify(previous.files) !== JSON.stringify(ws.files) ||
     previous.selected !== ws.selected
   )
     renderFiles();
   if (
-    !previous ||
+    projectChanged ||
+    JSON.stringify(previous.files) !== JSON.stringify(ws.files) ||
     JSON.stringify(previous.symbols) !== JSON.stringify(ws.symbols)
   )
     renderOutline();
@@ -419,6 +419,46 @@ function fileMenu(file, event) {
     );
   showMenu(event, items);
 }
+function treeExpanded(kind, key, depth) {
+  const expansion = kind === "files" ? state.fileExpansion : state.outlineExpansion;
+  return expansion.get(key) ?? (kind === "outline" && depth === 0);
+}
+function restoreNavigation(ws) {
+  clearTimeout(state.navigationTimer);
+  const saved = ws.session.navigation || {};
+  const expansion = (value) => new Map(
+    Object.entries(value && typeof value === "object" ? value : {})
+      .filter(([, expanded]) => typeof expanded === "boolean"),
+  );
+  state.fileExpansion = expansion(saved.files);
+  state.outlineExpansion = expansion(saved.outline);
+  state.treeSelection = typeof saved.selection === "string" ? saved.selection : ws.selected || "";
+  for (const mode of ["files", "outline"])
+    state.treeScroll[mode] = Number.isFinite(saved.scroll?.[mode]) ? Math.max(0, saved.scroll[mode]) : 0;
+  state.mode = saved.mode === "outline" ? "outline" : "files";
+  showNavigationMode();
+}
+function persistNavigation() {
+  if (!state.ws) return;
+  const navigation = {
+    mode: state.mode,
+    files: Object.fromEntries(state.fileExpansion),
+    outline: Object.fromEntries(state.outlineExpansion),
+    selection: state.treeSelection,
+    scroll: { ...state.treeScroll },
+  };
+  state.ws.session.navigation = navigation;
+  const projectId = state.ws.project.id;
+  attempt(() => request("session", { projectId, navigation }));
+}
+function showNavigationMode() {
+  for (const mode of ["files", "outline"]) {
+    $("#" + (mode === "files" ? "file" : "outline") + "-tree").hidden = state.mode !== mode;
+    $("#" + mode + "-mode").classList.toggle("active", state.mode === mode);
+  }
+  const tree = $(state.mode === "files" ? "#file-tree" : "#outline-tree");
+  tree.scrollTop = state.treeScroll[state.mode];
+}
 function renderFiles() {
   const tree = $("#file-tree");
   tree.replaceChildren();
@@ -427,7 +467,7 @@ function renderFiles() {
     if (
       pieces
         .slice(0, -1)
-        .some((_, i) => state.collapsed.has(pieces.slice(0, i + 1).join("/")))
+        .some((_, i) => !treeExpanded("files", pieces.slice(0, i + 1).join("/"), i))
     )
       continue;
     const row = document.createElement("div");
@@ -438,19 +478,18 @@ function renderFiles() {
     row.setAttribute("role", "treeitem");
     row.setAttribute("aria-level", pieces.length);
     row.title = file.path;
-    const expanded = !state.collapsed.has(file.path);
+    const expanded = treeExpanded("files", file.path, pieces.length - 1);
+    if (file.directory) row.setAttribute("aria-expanded", String(expanded));
     row.innerHTML = `<span class="caret ${file.directory && expanded ? "expanded" : ""}">${file.directory ? icon("chevron", 10) : ""}</span><span class="tree-icon">${icon(file.directory ? "folder" : file.path.endsWith(".tex") ? "code" : "file", 15)}</span><span class="tree-name">${esc(file.name)}</span>`;
     const toggle = () => {
-      state.collapsed.has(file.path)
-        ? state.collapsed.delete(file.path)
-        : state.collapsed.add(file.path);
-      renderFiles();
+      state.fileExpansion.set(file.path, !expanded);
     };
     row.onclick = () => {
       state.treeSelection = file.path;
       if (file.directory) toggle();
       else attempt(() => request("openFile", { path: file.path }));
       renderFiles();
+      persistNavigation();
     };
     row.oncontextmenu = (event) => {
       event.stopPropagation();
@@ -477,6 +516,7 @@ function renderFiles() {
     tree.append(row);
   }
   $("#project-root").classList.toggle("selected", state.treeSelection === "");
+  if (state.mode === "files") tree.scrollTop = state.treeScroll.files;
 }
 function dropTarget(element, parent) {
   element.ondragover = (event) => {
@@ -510,69 +550,70 @@ function renderOutline() {
   for (const file of (state.ws?.files || []).filter(
     (f) => !f.directory && /\.tex$/i.test(f.path),
   )) {
+    const occurrences = new Map();
     const symbols = state.ws.symbols
       .filter((s) => s.kind === "section" && s.path === file.path)
-      .sort((a, b) => a.offset - b.offset);
-    const fileKey = "outline:" + file.path;
+      .sort((a, b) => a.offset - b.offset)
+      .map((symbol) => {
+        const identity = JSON.stringify([file.path, symbol.level, symbol.label]);
+        const occurrence = occurrences.get(identity) || 0;
+        occurrences.set(identity, occurrence + 1);
+        return { ...symbol, key: identity + ":" + occurrence };
+      });
+    const fileKey = "file:" + file.path;
+    const expanded = treeExpanded("outline", fileKey, 0);
     const root = document.createElement("div");
     root.className = "tree-row outline-row";
     root.style.setProperty("--depth", 0);
     root.title = "跳转 " + file.path;
-    root.innerHTML = `<button class="caret ${state.collapsed.has(fileKey) ? "" : "expanded"}" title="展开或折叠 ${esc(file.path)}">${icon("chevron", 10)}</button><span class="tree-icon">${icon("file", 15)}</span><span class="tree-name">${esc(file.path)}</span>`;
+    root.setAttribute("role", "treeitem");
+    root.setAttribute("aria-level", "1");
+    root.setAttribute("aria-expanded", String(expanded));
+    root.innerHTML = `<button class="caret ${expanded ? "expanded" : ""}" title="展开或折叠 ${esc(file.path)}">${icon("chevron", 10)}</button><span class="tree-icon">${icon("file", 15)}</span><span class="tree-name">${esc(file.path)}</span>`;
     root.onclick = () =>
       attempt(() => request("openFile", { path: file.path, line: 1 }));
     root.querySelector("button").onclick = (event) => {
       event.stopPropagation();
-      state.collapsed.has(fileKey)
-        ? state.collapsed.delete(fileKey)
-        : state.collapsed.add(fileKey);
+      state.outlineExpansion.set(fileKey, !expanded);
       renderOutline();
+      persistNavigation();
     };
     tree.append(root);
-    if (state.collapsed.has(fileKey)) continue;
+    if (!expanded) continue;
     const stack = [];
-    for (const symbol of symbols) {
+    for (const [index, symbol] of symbols.entries()) {
       while (stack.length && stack.at(-1).level >= symbol.level) stack.pop();
-      const key = "heading:" + file.path + ":" + symbol.offset,
-        hidden = stack.some((s) => state.collapsed.has(s.key));
+      const hidden = stack.some((s) => !treeExpanded("outline", s.key, s.depth));
       const depth = stack.length + 1;
       if (!hidden) {
         const row = document.createElement("div");
         row.className = "tree-row outline-row";
         row.style.setProperty("--depth", depth);
         row.title = `${file.path}:${symbol.line}`;
-        const children = symbols.some(
-          (next) =>
-            next.offset > symbol.offset &&
-            next.level > symbol.level &&
-            !symbols.some(
-              (mid) =>
-                mid.offset > symbol.offset &&
-                mid.offset < next.offset &&
-                mid.level <= symbol.level,
-            ),
-        );
-        row.innerHTML = `<button class="caret ${state.collapsed.has(key) ? "" : "expanded"}" title="展开或折叠章节">${children ? icon("chevron", 10) : ""}</button><span class="outline-kind">H${symbol.level}</span><span class="tree-name">${esc(symbol.label)}</span>`;
+        row.setAttribute("role", "treeitem");
+        row.setAttribute("aria-level", String(depth + 1));
+        const children = symbols[index + 1]?.level > symbol.level;
+        const expanded = treeExpanded("outline", symbol.key, depth);
+        if (children) row.setAttribute("aria-expanded", String(expanded));
+        row.innerHTML = `<button class="caret ${expanded ? "expanded" : ""}" title="展开或折叠章节" ${children ? "" : "disabled"}>${children ? icon("chevron", 10) : ""}</button><span class="outline-kind">H${symbol.level}</span><span class="tree-name">${esc(symbol.label)}</span>`;
         row.onclick = () =>
-          attempt(() =>
-            request("openFile", { path: file.path, line: symbol.line }),
-          );
+          attempt(() => request("openFile", { path: file.path, line: symbol.line }));
         row.querySelector("button").onclick = (event) => {
           event.stopPropagation();
-          state.collapsed.has(key)
-            ? state.collapsed.delete(key)
-            : state.collapsed.add(key);
+          state.outlineExpansion.set(symbol.key, !expanded);
           renderOutline();
+          persistNavigation();
         };
         tree.append(row);
       }
-      stack.push({ ...symbol, key });
+      stack.push({ ...symbol, depth });
     }
   }
   if (!tree.children.length)
-    tree.innerHTML =
-      '<p class="outline-placeholder">项目中的 TeX 章节将在这里显示。</p>';
+    tree.innerHTML = '<p class="outline-placeholder">项目中的 TeX 章节将在这里显示。</p>';
+  if (state.mode === "outline") tree.scrollTop = state.treeScroll.outline;
 }
+
 function showMenu(event, items) {
   event.preventDefault?.();
   const menu = $("#context-menu");
@@ -599,11 +640,11 @@ function showMenu(event, items) {
   menu.style.top =
     Math.max(48, Math.min(event.clientY, innerHeight - rect.height - 8)) + "px";
 }
-function promptForm(title, description, fields, confirm = "确认") {
+function promptForm(title, description, fields, confirm = "确认", validate = null) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
     dialog.className = "prompt-dialog";
-    dialog.innerHTML = `<form><header class="dialog-header"><div><h2>${esc(title)}</h2><p>${esc(description)}</p></div><button type="button" class="icon-button prompt-cancel" title="取消">×</button></header><div class="form-body">${fields}</div><footer class="dialog-footer"><button type="button" class="button secondary prompt-cancel" title="取消操作">取消</button><button class="button primary" type="submit" title="${esc(confirm)}">${esc(confirm)}</button></footer></form>`;
+    dialog.innerHTML = `<form><header class="dialog-header"><div><h2>${esc(title)}</h2><p>${esc(description)}</p></div><button type="button" class="icon-button prompt-cancel" title="取消">×</button></header><div class="form-body">${fields}<p class="form-error" role="alert" hidden></p></div><footer class="dialog-footer"><button type="button" class="button secondary prompt-cancel" title="取消操作">取消</button><button class="button primary" type="submit" title="${esc(confirm)}">${esc(confirm)}</button></footer></form>`;
     document.body.append(dialog);
     let result = null;
     dialog.addEventListener(
@@ -616,7 +657,15 @@ function promptForm(title, description, fields, confirm = "确认") {
     );
     dialog.querySelector("form").onsubmit = (event) => {
       event.preventDefault();
-      result = Object.fromEntries(new FormData(event.target));
+      const values = Object.fromEntries(new FormData(event.target));
+      const error = validate?.(values);
+      if (error) {
+        const message = dialog.querySelector(".form-error");
+        message.textContent = error;
+        message.hidden = false;
+        return;
+      }
+      result = values;
       dialog.close();
     };
     for (const button of dialog.querySelectorAll(".prompt-cancel"))
@@ -635,15 +684,34 @@ async function promptText(title, label, value = "") {
   );
   return values?.value;
 }
+async function editProjectAlias(project) {
+  const folderName = project.path.replaceAll("\\", "/").split("/").filter(Boolean).at(-1);
+  let alias = projectAlias(project);
+  while (true) {
+    const values = await promptForm("设置项目别名", "别名不能与其他项目的显示名称重复；留空恢复文件夹名称。\n" + project.path,
+      `<label class="field"><span>项目别名（可选）</span><input name="alias" value="${esc(alias)}" placeholder="${esc(folderName)}" maxlength="120" aria-label="项目别名"></label>`, "保存",
+      (values) => aliasError(state.projects, values.alias, project.id));
+    if (!values) return;
+    alias = values.alias;
+    const result = await request("projectAction", { id: project.id, action: "rename", name: alias });
+    if (!result?.editAlias) return;
+  }
+}
 async function newProject() {
   const templates = await request("templates");
-  const values = await promptForm(
+  let values = { name: "Untitled", alias: "", template: "" };
+  while (true) {
+    values = await promptForm(
     "新建项目",
     "创建独立的本地文件夹，默认使用英文 article 模板。",
-    `<label class="field"><span>项目名称</span><input name="name" value="Untitled" required maxlength="120" aria-label="项目名称"></label><label class="field"><span>模板</span><select name="template" title="选择文稿模板"><option value="">基础英文文稿</option>${templates.map((name) => `<option>${esc(name)}</option>`).join("")}</select></label>`,
+    `<label class="field"><span>文件夹名称</span><input name="name" value="${esc(values.name)}" required maxlength="120" aria-label="文件夹名称"></label><label class="field"><span>项目别名（可选）</span><input name="alias" value="${esc(values.alias)}" placeholder="留空使用文件夹名称" maxlength="120" aria-label="项目别名"></label><label class="field"><span>模板</span><select name="template" title="选择文稿模板"><option value="">基础英文文稿</option>${templates.map((name) => `<option ${name === values.template ? "selected" : ""}>${esc(name)}</option>`).join("")}</select></label>`,
     "选择保存位置",
+    (values) => aliasError(state.projects, values.alias),
   );
-  if (values) await request("createProject", values);
+    if (!values) return;
+    const result = await request("createProject", values);
+    if (!result?.editProject) return;
+  }
 }
 async function newItem(kind, parent = parentForSelection()) {
   const name = await promptText(
@@ -707,7 +775,7 @@ async function openConfiguration() {
     )
     .join(
       "",
-    )}</select></label><label class="field"><span>编译引擎</span><select name="engine" title="选择 LaTeX 编译引擎">${["XeLaTeX", "pdfLaTeX", "LuaLaTeX"].map((engine) => `<option ${engine === config.engine ? "selected" : ""}>${engine}</option>`).join("")}</select></label><label class="form-check"><input type="checkbox" name="autoCompile" ${config.autoCompile ? "checked" : ""} ${state.settings.autoSaveEnabled ? "" : "disabled"} title="自动保存成功后编译此项目">此项目自动保存后编译</label>${state.settings.autoSaveEnabled ? "" : '<p class="section-note">不可用：需先在设置中开启自动保存。</p>'}<details><summary title="展开编译路径与高级选项">高级选项</summary><label class="field"><span>工作目录（留空使用主文件所在目录）</span><input name="workingDirectory" value="${esc(config.workingDirectory)}" placeholder="例如：." aria-label="工作目录"></label><label class="field"><span>输出目录（相对于工作目录）</span><input name="outputDirectory" value="${esc(config.outputDirectory)}" required aria-label="输出目录"></label><label class="field"><span>latexmk rc 文件（项目相对路径，可留空）</span><input name="rcFile" value="${esc(config.rcFile)}" aria-label="latexmk 配置文件"></label><label class="form-check"><input type="checkbox" name="shellEscape" ${config.shellEscape ? "checked" : ""} title="允许 TeX 运行文稿中的外部命令，仅用于你信任的文稿">允许 shell escape</label></details><p class="form-error"></p></div><footer class="dialog-footer"><button type="button" class="button secondary dialog-close" title="取消配置更改">取消</button><button type="submit" class="button primary" title="保存项目编译配置">保存配置</button></footer></form>`;
+    )}</select></label><label class="field"><span>编译引擎</span><select name="engine" title="选择 LaTeX 编译引擎">${["pdfLaTeX", "XeLaTeX", "LuaLaTeX"].map((engine) => `<option ${engine === config.engine ? "selected" : ""}>${engine}</option>`).join("")}</select></label><label class="field"><span>插入文献的默认文件</span><select name="bibliographyFile" title="指定默认 .bib 文件，或在存在多个 .bib 时每次询问"><option value="">每次询问（存在多个 .bib 时）</option>${ws.files.filter((file) => !file.directory && /\.bib$/i.test(file.path)).map((file) => `<option value="${esc(file.path)}" ${file.path === config.bibliographyFile ? "selected" : ""}>${esc(file.path)}</option>`).join("")}</select></label><label class="form-check"><input type="checkbox" name="autoCompile" ${config.autoCompile ? "checked" : ""} ${state.settings.autoSaveEnabled ? "" : "disabled"} title="自动保存成功后编译此项目">此项目自动保存后编译</label>${state.settings.autoSaveEnabled ? "" : '<p class="section-note">不可用：需先在设置中开启自动保存。</p>'}<details><summary title="展开编译路径与高级选项">高级选项</summary><label class="field"><span>工作目录（留空使用主文件所在目录）</span><input name="workingDirectory" value="${esc(config.workingDirectory)}" placeholder="例如：." aria-label="工作目录"></label><label class="field"><span>输出目录（相对于工作目录）</span><input name="outputDirectory" value="${esc(config.outputDirectory)}" required aria-label="输出目录"></label><label class="field"><span>latexmk rc 文件（项目相对路径，可留空）</span><input name="rcFile" value="${esc(config.rcFile)}" aria-label="latexmk 配置文件"></label><label class="form-check"><input type="checkbox" name="shellEscape" ${config.shellEscape ? "checked" : ""} title="允许 TeX 运行文稿中的外部命令，仅用于你信任的文稿">允许 shell escape</label></details><p class="form-error"></p></div><footer class="dialog-footer"><button type="button" class="button secondary dialog-close" title="取消配置更改">取消</button><button type="submit" class="button primary" title="保存项目编译配置">保存配置</button></footer></form>`;
   for (const button of dialog.querySelectorAll(".dialog-close"))
     button.onclick = () => dialog.close();
   dialog.querySelector("form").onsubmit = (event) => {
@@ -1048,6 +1116,20 @@ async function editorEvent(message, capturedProjectId = state.ws?.project.id) {
     case "forwardSync":
       if (projectId) await request("forwardSync", { line: message.line });
       break;
+    case "pasteCitation": {
+      if (!projectId || projectId !== state.ws?.project.id) break;
+      const info = await request("citationClipboard", { ...message, projectId });
+      let target = info.defaultFile || (info.files.length === 1 ? info.files[0] : "");
+      if (!target) {
+        const choice = await promptForm("选择文献文件", "文献将追加到所选 .bib 的底部。可在项目配置中设置默认文件。",
+          `<label class="field"><span>文献文件</span><select name="file" title="选择要追加文献的 .bib 文件">${info.files.map((file) => `<option value="${esc(file)}">${esc(file)}</option>`).join("")}</select></label>`, "插入");
+        if (!choice) break;
+        target = choice.file;
+      }
+      if (projectId !== state.ws?.project.id) break;
+      await request("pasteCitation", { ...message, projectId, clipboard: info.text, bibliographyFile: target });
+      break;
+    }
     case "insertImage":
       if (projectId) await request("importImage");
       break;
@@ -1084,7 +1166,6 @@ window.folioHost.onEvent((event) => {
       state.view = "workspace";
       state.ws = null;
       preview.clear().catch(() => {});
-      state.collapsed.clear();
       state.treeSelection = event.workspace.selected || "";
       state.log = "";
       $("#build-log").textContent = "";
@@ -1100,6 +1181,7 @@ window.folioHost.onEvent((event) => {
       if (event.document) sendEditor(event.document);
       break;
     case "showLibrary":
+      clearTimeout(state.navigationTimer);
       state.view = "library";
       $("#workspace").hidden = true;
       $("#library").hidden = false;
@@ -1223,6 +1305,7 @@ $("#back-library").onclick = () => attempt(() => request("showLibrary"));
 $("#project-root").onclick = () => {
   state.treeSelection = "";
   renderFiles();
+  persistNavigation();
 };
 $("#project-root").oncontextmenu = (event) => fileMenu("", event);
 $("#file-tree").oncontextmenu = (event) => {
@@ -1232,18 +1315,27 @@ $("#file-tree").onclick = (event) => {
   if (!event.target.closest(".tree-row")) {
     state.treeSelection = "";
     renderFiles();
+    persistNavigation();
   }
 };
 dropTarget($("#file-tree"), "");
 dropTarget($("#project-root"), "");
 for (const mode of ["files", "outline"])
   $("#" + mode + "-mode").onclick = () => {
+    state.treeScroll[state.mode] = $(state.mode === "files" ? "#file-tree" : "#outline-tree").scrollTop;
     state.mode = mode;
-    $("#file-tree").hidden = mode !== "files";
-    $("#outline-tree").hidden = mode !== "outline";
-    $("#files-mode").classList.toggle("active", mode === "files");
-    $("#outline-mode").classList.toggle("active", mode === "outline");
+    showNavigationMode();
+    persistNavigation();
   };
+for (const mode of ["files", "outline"]) {
+  const tree = $(mode === "files" ? "#file-tree" : "#outline-tree");
+  tree.onscroll = () => {
+    if (!state.ws || state.view !== "workspace" || state.mode !== mode) return;
+    state.treeScroll[mode] = tree.scrollTop;
+    clearTimeout(state.navigationTimer);
+    state.navigationTimer = setTimeout(persistNavigation, 200);
+  };
+}
 $("#toggle-format").onclick = () => {
   state.format = !state.format;
   $("#toggle-format").classList.toggle("active", state.format);
@@ -1383,4 +1475,9 @@ $("#toolbar-library").onclick = () => attempt(() => request("showLibrary"));
 $("#toolbar-search").onclick = () => attempt(openSearch);
 $("#toolbar-log").onclick = () => showLog($("#build-panel").hidden);
 $("#toolbar-engine").onclick = () => attempt(openConfiguration);
+$("#toolbar-citation").innerHTML = icon("file", 18);
+$("#toolbar-citation").onclick = () => editorCommand("pasteCitation");
+$(".workspace-toolbar-title").oncontextmenu = (event) => {
+  if (state.ws) showMenu(event, [["file", "设置项目别名…", () => editProjectAlias(state.ws.project)]]);
+};
 $("#export-pdf").onclick = () => attempt(() => request("exportPDF"));

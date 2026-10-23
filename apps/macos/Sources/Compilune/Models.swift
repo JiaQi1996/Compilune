@@ -16,12 +16,13 @@ struct Project: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
     var path: String
+    var alias: String?
     var pinned = false
     var archived = false
     var opened = Date()
     var edited = Date()
     var root = "main.tex"
-    var engine = "XeLaTeX"
+    var engine = "pdfLaTeX"
     init(name: String, path: String) {
         self.name = name
         self.path = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
@@ -36,13 +37,18 @@ struct ProjectConfig: Codable {
     var rcFile: String?
     var workingDirectory: String?
     var outputDirectory: String?
+    var bibliographyFile: String?
 }
 @MainActor final class Preferences: ObservableObject {
     static let shared = Preferences()
-    @Published var uiSize: Double = min(30, max(8, UserDefaults.standard.object(forKey: "uiSize") as? Double ?? 13)) {
+    @Published var uiSize: Double = min(
+        30, max(8, UserDefaults.standard.object(forKey: "uiSize") as? Double ?? 13))
+    {
         didSet { UserDefaults.standard.set(uiSize, forKey: "uiSize") }
     }
-    @Published var codeSize: Double = min(30, max(8, UserDefaults.standard.object(forKey: "codeSize") as? Double ?? 13)) {
+    @Published var codeSize: Double = min(
+        30, max(8, UserDefaults.standard.object(forKey: "codeSize") as? Double ?? 13))
+    {
         didSet { UserDefaults.standard.set(codeSize, forKey: "codeSize") }
     }
     @Published var theme: String = UserDefaults.standard.string(forKey: "theme") ?? "系统" {
@@ -141,6 +147,12 @@ struct ProjectConfig: Codable {
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
             if FileManager.default.fileExists(atPath: registry.path) {
                 projects = try JSONDecoder().decode([Project].self, from: Data(contentsOf: registry))
+                for index in projects.indices
+                where projects[index].alias == nil
+                    && projects[index].name != projects[index].url.lastPathComponent
+                {
+                    projects[index].alias = projects[index].name
+                }
             }
         } catch {
             registryReadOnly = true
@@ -161,8 +173,10 @@ struct ProjectConfig: Codable {
     }
     func register(_ url: URL) -> Project {
         let folder = url.resolvingSymlinksInPath().standardizedFileURL
-        if var p = projects.first(where: { $0.path == folder.path }) {
+        if var p = project(at: folder) {
             p.opened = Date()
+            p.archived = false
+            p.path = folder.path
             update(p)
             return p
         }
@@ -259,10 +273,13 @@ struct ReplacementPlan {
     @Published var autoCompile = false
     @Published var shellEscape = false
     @Published var rcFile = ""
+    @Published var bibliographyFile = ""
     @Published var workingDirectory = ""
     @Published var outputDirectory = ".folio/build"
     @Published var symbolList: [SourceSymbol] = []
     @Published var showOutline = false
+    @Published var fileTreeExpansion: [String: Bool] = [:]
+    @Published var outlineTreeExpansion: [String: Bool] = [:]
     @Published var fileTreeSelection: String?
     @Published var conflictPaths: Set<String> = []
     var positions: [String: DocumentPosition] = [:]
@@ -409,7 +426,7 @@ struct ReplacementPlan {
             let cfg = ProjectConfig(
                 root: project.root, engine: project.engine, autoCompile: autoCompile,
                 shellEscape: shellEscape, rcFile: rcFile, workingDirectory: workingDirectory,
-                outputDirectory: outputDirectory)
+                outputDirectory: outputDirectory, bibliographyFile: bibliographyFile)
             try JSONEncoder().encode(cfg).write(
                 to: dir.appendingPathComponent("project.json"), options: .atomic)
             Library.shared.update(project)

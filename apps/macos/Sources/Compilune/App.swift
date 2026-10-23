@@ -9,6 +9,8 @@ typealias ViewState<Value> = SwiftUI.State<Value>
 let sage = CompiluneDesign.accent
 @main struct CompiluneApp {
     @MainActor static func main() {
+        // App-scoped AppKit tooltip delay, in milliseconds; leave system preferences untouched.
+        UserDefaults.standard.set(1500, forKey: "NSInitialToolTipDelay")
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -135,7 +137,20 @@ let sage = CompiluneDesign.accent
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url { open(Library.shared.register(url)) }
+        if panel.runModal() == .OK, let selected = panel.url {
+            let url = selected.resolvingSymlinksInPath().standardizedFileURL
+            if Library.shared.project(at: url) == nil {
+                let response = Library.shared.confirmDefaultName(url.lastPathComponent, path: url.path)
+                guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else {
+                    return
+                }
+                let project = Library.shared.register(url)
+                if response == .alertFirstButtonReturn { Library.shared.rename(project) }
+                open(Library.shared.projects.first(where: { $0.id == project.id }) ?? project)
+            } else {
+                open(Library.shared.register(url))
+            }
+        }
     }
     @objc func newProject() {
         let chooser = NSAlert()
@@ -151,35 +166,70 @@ let sage = CompiluneDesign.accent
 
         let alert = NSAlert()
         alert.messageText = "创建项目"
-        alert.informativeText = "创建 UTF-8 英文文稿，使用 XeLaTeX。"
+        alert.informativeText = "创建 UTF-8 英文文稿，默认使用 pdfLaTeX。"
         let field = NSTextField(string: "Untitled")
-        field.frame = NSRect(x: 0, y: 0, width: 280, height: 26)
-        alert.accessoryView = field
+        let aliasField = NSTextField(string: "")
+        aliasField.placeholderString = "留空使用文件夹名称"
+        let fields = NSStackView(views: [
+            NSTextField(labelWithString: "文件夹名称"), field,
+            NSTextField(labelWithString: "项目别名（可选）"), aliasField,
+        ])
+        fields.orientation = .vertical
+        fields.alignment = .leading
+        fields.spacing = 6
+        fields.frame = NSRect(x: 0, y: 0, width: 340, height: 110)
+        field.widthAnchor.constraint(equalToConstant: 340).isActive = true
+        aliasField.widthAnchor.constraint(equalToConstant: 340).isActive = true
+        alert.accessoryView = fields
         alert.addButton(withTitle: "选择保存位置").toolTip = "选择新项目的存储文件夹"
         alert.addButton(withTitle: "取消").toolTip = "取消操作，保留原内容"
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, !name.contains("/"), name != ".", name != ".." else { return }
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.prompt = "在此创建"
-        guard panel.runModal() == .OK, let parent = panel.url else { return }
-        let dir = parent.appendingPathComponent(name)
-        do {
-            guard !FileManager.default.fileExists(atPath: dir.path) else {
-                throw BuildError(message: "该目录已存在，不会覆盖")
-            }
-            if let chosenTemplate {
-                try TemplateStore.shared.copyTemplate(
-                    TemplateStore.shared.directory.appendingPathComponent(chosenTemplate), to: dir)
-            } else {
-                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false)
-                try ProjectTemplates.englishSource.write(
-                    to: dir.appendingPathComponent("main.tex"), atomically: true, encoding: .utf8)
-            }
-            open(Library.shared.register(dir))
-        } catch { Library.shared.error = error.localizedDescription }
+        var selectedParent: URL?
+        while alert.runModal() == .alertFirstButtonReturn {
+            let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            do {
+                let alias = try Library.shared.validateAlias(aliasField.stringValue)
+                guard !name.isEmpty, !name.contains("/"), name != ".", name != "..",
+                    !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+                else { throw BuildError(message: "请填写有效的文件夹名称") }
+                if selectedParent == nil {
+                    let panel = NSOpenPanel()
+                    panel.canChooseDirectories = true
+                    panel.canChooseFiles = false
+                    panel.prompt = "在此创建"
+                    guard panel.runModal() == .OK, let parent = panel.url else { return }
+                    selectedParent = parent
+                }
+                let dir = selectedParent!.appendingPathComponent(name)
+                if Library.shared.project(at: dir) != nil || FileManager.default.fileExists(atPath: dir.path)
+                {
+                    selectedParent = nil
+                    throw BuildError(
+                        message: "此位置已有文件夹或项目，不能重复新建，也不会覆盖原文件。\n\(dir.path)\n请打开已有项目，或选择不同名称、保存位置。")
+                }
+                if alias.isEmpty {
+                    let response = Library.shared.confirmDefaultName(name, path: dir.path)
+                    if response == .alertFirstButtonReturn {
+                        alert.window.initialFirstResponder = aliasField
+                        continue
+                    }
+                    if response != .alertSecondButtonReturn { return }
+                }
+                if let chosenTemplate {
+                    try TemplateStore.shared.copyTemplate(
+                        TemplateStore.shared.directory.appendingPathComponent(chosenTemplate), to: dir)
+                } else {
+                    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false)
+                    try ProjectTemplates.englishSource.write(
+                        to: dir.appendingPathComponent("main.tex"), atomically: true, encoding: .utf8)
+                }
+                var project = Library.shared.register(dir)
+                project.alias = alias.isEmpty ? nil : alias
+                if !alias.isEmpty { project.name = alias }
+                Library.shared.update(project)
+                open(project)
+                return
+            } catch { Library.shared.notice(error.localizedDescription) }
+        }
     }
     @objc func newFile() { active?.promptNewItem(.file) }
     @objc func settings() {
@@ -474,7 +524,7 @@ struct LibraryView: View {
                         Text("Compilune").font(.title3.bold())
                         Text("你的本地写作空间").foregroundStyle(.secondary).font(.caption)
                     }
-                }.padding(.vertical, 32)
+                }.padding(.top, 8).padding(.bottom, 20)
                 ForEach(
                     [("全部项目", "books.vertical"), ("最近打开", "clock"), ("已置顶", "pin"), ("已归档", "archivebox")],
                     id: \.0
@@ -528,62 +578,70 @@ struct LibraryView: View {
                     }).first
                 {
                     HStack(spacing: 22) {
-                        ProjectCover(project: recent).frame(width: 190)
+                        ProjectCover(project: recent, height: 155).frame(width: 190)
                         VStack(alignment: .leading, spacing: 12) {
                             Text("继续上次的写作").font(.caption).foregroundStyle(.secondary)
-                            Text(recent.name).font(.title3)
+                            Text(recent.name).font(.title3).lineLimit(1).truncationMode(.tail)
+                                .help(recent.name)
                             Text(recent.path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             Button("继续写作 ↗") { AppDelegate.shared.open(recent) }.help("打开最近项目：" + recent.name)
                                 .buttonStyle(.borderedProminent).tint(sage)
-                        }
+                        }.frame(maxWidth: .infinity, alignment: .leading)
                         Spacer()
                     }.background(.background, in: RoundedRectangle(cornerRadius: 9))
+                        .clipShape(RoundedRectangle(cornerRadius: 9))
                 }
                 ScrollView {
                     LazyVGrid(
                         columns: grid
-                            ? [GridItem(.adaptive(minimum: 250), spacing: 16)] : [GridItem(.flexible())],
-                        spacing: 16
+                            ? [GridItem(.adaptive(minimum: 243, maximum: 243), spacing: 16)]
+                            : [GridItem(.flexible())],
+                        alignment: .leading, spacing: 16
                     ) {
                         ForEach(visible) { project in
                             VStack(alignment: .leading, spacing: 0) {
                                 if grid { ProjectCover(project: project) }
                                 HStack {
                                     VStack(alignment: .leading, spacing: 7) {
-                                        Text(project.name).fontWeight(.medium)
+                                        Text(project.name).fontWeight(.medium).lineLimit(1)
+                                            .truncationMode(.tail).help(project.name)
+                                        Text(project.path).font(.caption).foregroundStyle(.secondary)
+                                            .lineLimit(2).truncationMode(.middle).help(project.path)
                                         Text(
-                                            project.engine + " · "
-                                                + project.edited.formatted(
-                                                    date: .abbreviated, time: .shortened)
-                                        ).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
+                                            project.edited.formatted(date: .abbreviated, time: .shortened)
+                                        ).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                            .truncationMode(.tail)
+                                    }.frame(maxWidth: .infinity, alignment: .leading)
                                     ProjectPinButton(project: project)
-                                }.padding(15)
-                            }.background(.background, in: RoundedRectangle(cornerRadius: 9)).overlay(
-                                RoundedRectangle(cornerRadius: 9).stroke(sage.opacity(0.16))
-                            ).onTapGesture(count: 2) { AppDelegate.shared.open(project) }.contextMenu {
-                                Button("打开") { AppDelegate.shared.open(project) }.help("打开项目：" + project.name)
-                                Button(project.pinned ? "取消置顶" : "置顶") {
-                                    var p = project
-                                    p.pinned.toggle()
-                                    library.update(p)
-                                }.help(project.pinned ? "取消项目置顶" : "将项目置顶，方便查找")
-                                Button(project.archived ? "取消归档" : "归档") {
-                                    var p = project
-                                    p.archived.toggle()
-                                    library.update(p)
-                                }.help(project.archived ? "将项目移回全部项目" : "归档项目，保留本地源文件")
-                                Button("在 Finder 显示") {
-                                    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.path)
-                                }.help("在 Finder 中打开项目文件夹")
-                                Button("重命名显示名称…") { library.rename(project) }.help("修改项目库中的显示名称")
-                                Button("重新定位…") { library.relocate(project) }.help("项目文件夹移动后重新选择其位置")
-                                Button("从项目库移除", role: .destructive) { library.remove(project) }.help(
-                                    "移除项目库记录，保留本地文件")
-                            }.help("双击打开项目：" + project.name).accessibilityAction {
-                                AppDelegate.shared.open(project)
-                            }
+                                }.padding(15).frame(height: max(116, prefs.uiSize * 2.7 + 66))
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.background, in: RoundedRectangle(cornerRadius: 9))
+                                .clipShape(RoundedRectangle(cornerRadius: 9)).overlay(
+                                    RoundedRectangle(cornerRadius: 9).stroke(sage.opacity(0.16))
+                                ).onTapGesture(count: 2) { AppDelegate.shared.open(project) }.contextMenu {
+                                    Button("打开") { AppDelegate.shared.open(project) }.help(
+                                        "打开项目：" + project.name)
+                                    Button(project.pinned ? "取消置顶" : "置顶") {
+                                        var p = project
+                                        p.pinned.toggle()
+                                        library.update(p)
+                                    }.help(project.pinned ? "取消项目置顶" : "将项目置顶，方便查找")
+                                    Button(project.archived ? "取消归档" : "归档") {
+                                        var p = project
+                                        p.archived.toggle()
+                                        library.update(p)
+                                    }.help(project.archived ? "将项目移回全部项目" : "归档项目，保留本地源文件")
+                                    Button("在 Finder 显示") {
+                                        NSWorkspace.shared.selectFile(
+                                            nil, inFileViewerRootedAtPath: project.path)
+                                    }.help("在 Finder 中打开项目文件夹")
+                                    Button("设置项目别名…") { library.rename(project) }.help("修改显示别名，留空使用文件夹名称")
+                                    Button("重新定位…") { library.relocate(project) }.help("项目文件夹移动后重新选择其位置")
+                                    Button("从项目库移除", role: .destructive) { library.remove(project) }.help(
+                                        "移除项目库记录，保留本地文件")
+                                }.help("双击打开项目：" + project.name).accessibilityAction {
+                                    AppDelegate.shared.open(project)
+                                }
                         }
                     }
                     if visible.isEmpty {
@@ -624,9 +682,17 @@ struct WorkspaceView: View {
                 VStack(alignment: .leading) {
                     Text(workspace.project.name).bold()
                     Text(workspace.status).font(.caption).foregroundStyle(.secondary)
+                }.contextMenu {
+                    Button("设置项目别名…") { Library.shared.rename(workspace.project) }
+                        .help("修改项目显示名称，留空恢复文件夹名称")
                 }
                 Spacer()
                 Button(workspace.project.engine) { workspace.showConfig = true }.help("选择主文件、编译引擎、自动编译与输出目录")
+                Button {
+                    workspace.send?(["type": "command", "name": "pasteCitation"])
+                } label: {
+                    Image(systemName: "text.book.closed")
+                }.help(prefs.commandHint("pasteCitation", "插入剪贴板中的 BibTeX 文献并引用"))
                 Button(
                     workspace.running ? "停止" : "编译 ⌘R",
                     systemImage: workspace.running ? "stop.fill" : "play.fill"
@@ -695,7 +761,7 @@ struct WorkspaceView: View {
                         Button {
                             workspace.showFormattingToolbar.toggle()
                         } label: {
-                            Label("格式", systemImage: "textformat")
+                            Text("格式")
                         }
                         .buttonStyle(.bordered).tint(workspace.showFormattingToolbar ? sage : .secondary)
                         .help(workspace.showFormattingToolbar ? "收起编辑工具栏；快捷键仍可使用" : "展开编辑工具栏：格式、插入与导航")

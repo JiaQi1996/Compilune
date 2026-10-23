@@ -54,6 +54,8 @@ import {
   nextSnippetField,
   closeCompletion,
 } from "@codemirror/autocomplete";
+import { installTooltips, tooltipText } from "../workbench/tooltips.js";
+installTooltips();
 
 let hostPlatform = /Mac/.test(navigator.platform) ? "darwin" : "win32";
 const post = (body) => {
@@ -68,6 +70,7 @@ let path = "",
   dark = false,
   symbols = [],
   files = [],
+  indexSignature = "",
   flushToken = null;
 const documents = new Map();
 const style = new Compartment();
@@ -87,6 +90,7 @@ const commandHelp = {
   ordered: "将选中段落转换为有序列表",
   math: "插入行内公式，或将选区放入数学区域",
   cite: "插入文献引用并显示文献键候选",
+  pasteCitation: "校验剪贴板中的 BibTeX，追加到文献文件并插入引用",
   ref: "插入交叉引用并显示标签候选",
   image: "选择图片；项目外图片将复制到 figures 文件夹",
   find: "打开当前文件的查找面板",
@@ -143,7 +147,7 @@ function updateButtonHelp(root = document) {
       if (!defaultHints.has(id))
         defaultHints.set(
           id,
-          button.title.match(/(?:[⌘⌃⌥⇧]|F\d+).*$/)?.[0] || "",
+          tooltipText(button).match(/(?:[⌘⌃⌥⇧]|F\d+).*$/)?.[0] || "",
         );
       button.title = helpWithKey(
         id,
@@ -165,7 +169,7 @@ function updateButtonHelp(root = document) {
     else if (button.id === "insert-cancel") button.title = "取消插入，保留原文";
     else if (button.id === "insert-confirm")
       button.title = "按当前填写的内容生成并插入 LaTeX 源码";
-    else if (!button.title)
+    else if (!tooltipText(button))
       button.title =
         "执行：" +
         (button.getAttribute("aria-label") || button.textContent.trim());
@@ -296,23 +300,57 @@ const commandWords = {
   underline: ["underline{${text}}", "Underline text"],
   begin: [
     "begin{${1:environment}}\n  ${0}\n\\end{${1:environment}}",
-    "Environment · Enter to move to body",
+    "Environment · Tab to move to body",
   ],
   frac: ["frac{${numerator}}{${denominator}}", "Fraction"],
   sqrt: ["sqrt{${expression}}", "Square root"],
-  cite: ["cite{${key}}", "Bibliography citation"],
-  ref: ["ref{${label}}", "Cross-reference"],
+  cite: ["cite{${}}", "Bibliography citation"],
+  ref: ["ref{${}}", "Cross-reference"],
   label: ["label{${label}}", "Define a label"],
   includegraphics: [
-    "includegraphics[width=\\linewidth]{${file}}",
+    "includegraphics[width=\\linewidth]{${}}",
     "Insert image · graphicx",
   ],
-  input: ["input{${file}}", "Include a source file"],
-  usepackage: ["usepackage{${package}}", "Load a package"],
+  input: ["input{${}}", "Include a source file"],
+  usepackage: ["usepackage{${}}", "Load a package"],
   title: ["title{${Title}}", "Document title"],
   author: ["author{${Author}}", "Document author"],
   emph: ["emph{${text}}", "Emphasized text"],
 };
+
+Object.assign(commandWords, {
+  end: ["end{${}}", "End an environment"],
+  include: ["include{${}}", "Include a source file"],
+  eqref: ["eqref{${}}", "Equation reference"],
+  autoref: ["autoref{${}}", "Automatic reference"],
+  pageref: ["pageref{${}}", "Page reference"],
+  cref: ["cref{${}}", "Clever reference · cleveref"],
+  Cref: ["Cref{${}}", "Capitalized reference · cleveref"],
+  citep: ["citep{${}}", "Parenthetical citation · natbib"],
+  citet: ["citet{${}}", "Textual citation · natbib"],
+  parencite: ["parencite{${}}", "Parenthetical citation · biblatex"],
+  textcite: ["textcite{${}}", "Textual citation · biblatex"],
+  autocite: ["autocite{${}}", "Automatic citation · biblatex"],
+  bibliography: ["bibliography{${}}", "Bibliography database"],
+  addbibresource: ["addbibresource{${}}", "Bibliography resource · biblatex"],
+  bibliographystyle: ["bibliographystyle{${}}", "Bibliography style"],
+  documentclass: ["documentclass{${}}", "Document class"],
+});
+const argumentPattern = /\\(cite[A-Za-z]*|parencite|textcite|autocite|footcite|(?:auto|eq|page|v|V|c|C)?ref|input|include|includegraphics|addbibresource|bibliography|bibliographystyle|documentclass|usepackage)\*?(?:\[[^\]]*\])*\{([^{}]*)$/;
+function argumentContext(state) {
+  const before = state.sliceDoc(Math.max(0, state.selection.main.head - 400), state.selection.main.head);
+  return /\\(?:begin|end)\{[^{}]*$/.test(before) || argumentPattern.test(before);
+}
+function chainedSnippetCompletion(template, options) {
+  const completion = snippetCompletion(template, options), apply = completion.apply;
+  completion.apply = (view, option, from, to) => {
+    apply(view, option, from, to);
+    if (argumentContext(view.state)) setTimeout(() => {
+      if (argumentContext(view.state)) startCompletion(view);
+    }, 0);
+  };
+  return completion;
+}
 
 // Common commands plus project-defined macros are offered without network services.
 for (const name of [
@@ -429,33 +467,29 @@ function completions(context) {
             .map((s) => s.label),
         ]),
       ].map((label) => ({ label, type: "type" })),
-      validFor: /[^{}]*/,
+      ...(context.state.selection.main.empty ? { validFor: /[^{}]*/ } : { filter: false }),
     };
-  const arg = before.match(
-    /\\(cite\w*|ref|eqref|autoref|input|include|includegraphics)(?:\[[^\]]*\])?\{([^{}]*)$/,
-  );
+  const arg = before.match(argumentPattern);
   if (arg) {
-    const typed = arg[2].split(",").at(-1),
-      kind = arg[1].startsWith("cite")
-        ? "cite"
-        : /ref$/.test(arg[1])
-          ? "ref"
-          : "file";
-    const items =
-      kind === "file"
-        ? files.map((f) => ({ label: f, type: "file" }))
-        : symbols
-            .filter((s) => s.kind === kind)
-            .map((s) => ({
-              label: s.label,
-              type: kind === "cite" ? "reference" : "variable",
-              detail: s.path + ":" + s.line,
-            }));
-    return {
-      from: context.pos - typed.length,
-      options: items,
-      validFor: /[^{}\s,]*/,
-    };
+    const typed = arg[2].split(",").at(-1).trimStart(), name = arg[1];
+    let items;
+    if (/cite/i.test(name) || /ref$/i.test(name)) {
+      const kind = /cite/i.test(name) ? "cite" : "ref";
+      items = symbols.filter((symbol) => symbol.kind === kind)
+        .map((symbol) => ({ label: symbol.label, type: kind === "cite" ? "reference" : "variable", detail: symbol.path + ":" + symbol.line }));
+    } else {
+      const packageNames = ["amsmath", "amssymb", "graphicx", "hyperref", "geometry", "booktabs", "xcolor", "biblatex", "natbib", "mathtools", "siunitx", "enumitem", "cleveref", "subcaption"];
+      const classNames = ["article", "report", "book", "beamer", "letter", "standalone", "ctexart", "ctexrep", "ctexbook"];
+      const styleNames = ["plain", "unsrt", "alpha", "abbrv", "plainnat", "unsrtnat", "abbrvnat"];
+      const extensions = { input: /\.tex$/i, include: /\.tex$/i, includegraphics: /\.(?:pdf|png|jpe?g|eps)$/i,
+        bibliography: /\.bib$/i, addbibresource: /\.bib$/i, bibliographystyle: /\.bst$/i, documentclass: /\.cls$/i, usepackage: /\.sty$/i };
+      const labels = files.filter((file) => extensions[name]?.test(file)).map((file) =>
+        ["include", "bibliography", "bibliographystyle", "documentclass", "usepackage"].includes(name) ? file.replace(/\.[^.]+$/, "") : file);
+      labels.push(...(name === "usepackage" ? packageNames : name === "documentclass" ? classNames : name === "bibliographystyle" ? styleNames : []));
+      items = [...new Set(labels)].map((label) => ({ label, type: "file" }));
+    }
+    return { from: context.pos - typed.length, options: items,
+      ...(context.state.selection.main.empty ? { validFor: /[^{}\s,]*/ } : { filter: false }) };
   }
   const word = context.matchBefore(/\\[A-Za-z@]*/);
   if (!word) return null;
@@ -463,7 +497,7 @@ function completions(context) {
     .filter((s) => s.kind === "command")
     .map((s) => {
       const label = s.label.replace(/^\\/, "");
-      return snippetCompletion(
+      return chainedSnippetCompletion(
         label +
           Array.from(
             { length: s.arguments || 0 },
@@ -483,7 +517,7 @@ function completions(context) {
       ...Object.entries(commandWords)
         .filter(([name]) => !custom.some((c) => c.label === name))
         .map(([label, [template, detail]]) =>
-          snippetCompletion(template, {
+          chainedSnippetCompletion(template, {
             label,
             displayLabel: "\\" + label,
             detail,
@@ -815,6 +849,13 @@ function command(name) {
     case "cite":
       wrap("\\cite{", "}");
       return startCompletion(view);
+    case "pasteCitation": {
+      if (view.composing) { notice("请先完成输入法输入"); return false; }
+      changeReport();
+      const selection = view.state.selection.main;
+      post({ type: "pasteCitation", path, text: view.state.doc.toString(), from: selection.from, to: selection.to, scroll: view.scrollDOM.scrollTop });
+      return true;
+    }
     case "ref":
       wrap("\\ref{", "}");
       return startCompletion(view);
@@ -930,9 +971,9 @@ const extensions = [
   Prec.highest(
     keymap.of([
       {
-        key: "Enter",
+        key: "Tab",
         run: (v) => {
-          if (!hasNextSnippetField(v.state)) return false;
+          if (!hasNextSnippetField(v.state)) return acceptCompletion(v);
           closeCompletion(v);
           return nextSnippetField(v);
         },
@@ -1129,15 +1170,22 @@ window.folio = {
           ),
         });
         view.scrollDOM.scrollTop = message.scroll || 0;
+        if (message.focus) view.focus();
         break;
       }
       case "insert":
         replaceRange(message.text);
         break;
-      case "index":
+      case "index": {
+        const signature = JSON.stringify([message.symbols || [], message.files || []]);
+        const changed = signature !== indexSignature;
+        indexSignature = signature;
         symbols = message.symbols || [];
         files = message.files || [];
+        if (changed && view.hasFocus && argumentContext(view.state))
+          setTimeout(() => { if (view.hasFocus && argumentContext(view.state)) startCompletion(view); }, 0);
         break;
+      }
       case "options": {
         const signature = JSON.stringify(message);
         if (signature === optionsSignature) break;
