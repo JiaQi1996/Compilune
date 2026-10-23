@@ -1,0 +1,25 @@
+# Build products and local dependencies
+.build/
+.build-*/
+.swiftpm/
+dist/
+packages/editor/node_modules/
+
+# Xcode and macOS state
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store
+._*
+
+# Local verification files (not published)
+Tests/
+tests/
+scripts/test-*.sh
+apps/macos/scripts/test-*.sh
+docs/TESTING.md
+playwright-report/
+test-results/
+editor-test.png
+completion-preview.png
+*.log
