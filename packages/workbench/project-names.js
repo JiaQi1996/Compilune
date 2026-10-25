@@ -2,6 +2,13 @@ export const folderName = (path) => path.replaceAll("\\", "/").split("/").filter
 export const projectNameKey = (name) => name.trim().normalize("NFKC").toLocaleLowerCase("en-US");
 export const projectAlias = (project) => Object.hasOwn(project, "alias")
   ? project.alias || "" : project.name === folderName(project.path) ? "" : project.name;
+export function projectPDFName(project) {
+  let name = (projectAlias(project) || folderName(project.path)).trim()
+    .replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, "-").replace(/[. ]+$/, "");
+  if (!name) name = "document";
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) name = "_" + name;
+  return name + ".pdf";
+}
 export function aliasError(projects, alias, excluding = null) {
   if (typeof alias !== "string" || [...alias.trim()].length > 120 || /[\x00-\x1f\x7f]/.test(alias))
     return "项目别名无效，最多 120 个字符，不能包含换行或控制字符";

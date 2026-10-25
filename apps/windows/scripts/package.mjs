@@ -9,6 +9,16 @@ const distribution = path.resolve(root, "../../dist");
 const requested = process.argv[2] || "all";
 if (!["all", "arm64", "x64"].includes(requested))
   throw new Error("Architecture must be arm64, x64, or all");
+const pkg = JSON.parse(
+  await fs.readFile(path.join(root, "package.json"), "utf8"),
+);
+const releaseVersion = (
+  await fs.readFile(path.resolve(root, "../../VERSION"), "utf8")
+).trim();
+if (pkg.version !== releaseVersion)
+  throw new Error(
+    `Version mismatch: Windows package is ${pkg.version}, VERSION is ${releaseVersion}. Update both before packaging.`,
+  );
 const run = (args) =>
   new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
@@ -30,9 +40,6 @@ const run = (args) =>
   });
 execFileSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.resolve(root, "../../scripts/prepare-perl-windows.ps1")], { stdio: "inherit", windowsHide: true });
 await run([path.join(root, "scripts/build.mjs")]);
-const pkg = JSON.parse(
-  await fs.readFile(path.join(root, "package.json"), "utf8"),
-);
 await fs.mkdir(distribution, { recursive: true });
 for (const arch of requested === "all" ? ["arm64", "x64"] : [requested]) {
   const output = path.join(root, ".build", "package-" + arch);

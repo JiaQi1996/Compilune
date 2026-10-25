@@ -9,7 +9,7 @@ const state = {
   settings: {},
   ws: null,
   dark: false,
-  version: "0.2.8",
+  version: "",
   arch: "arm64",
   platform: "win32",
   tools: null,
@@ -1119,15 +1119,22 @@ async function editorEvent(message, capturedProjectId = state.ws?.project.id) {
     case "pasteCitation": {
       if (!projectId || projectId !== state.ws?.project.id) break;
       const info = await request("citationClipboard", { ...message, projectId });
+      if (info.existingKeys.length) {
+        const detail = "项目中已存在以下文献键：" + info.existingKeys.join(", ") + "。" +
+          (info.newKeys.length ? "已有文献不再追加；新文献将追加到所选 .bib，并在光标处插入全部引用。" : "是否仅在光标处插入引用？不会修改任何 .bib 文件。");
+        const confirmation = await promptForm("文献已存在", detail, "", info.newKeys.length ? "复用已有文献并插入" : "仅插入引用");
+        if (!confirmation) break;
+      }
       let target = info.defaultFile || (info.files.length === 1 ? info.files[0] : "");
-      if (!target) {
+      if (info.newKeys.length && !target) {
         const choice = await promptForm("选择文献文件", "文献将追加到所选 .bib 的底部。可在项目配置中设置默认文件。",
           `<label class="field"><span>文献文件</span><select name="file" title="选择要追加文献的 .bib 文件">${info.files.map((file) => `<option value="${esc(file)}">${esc(file)}</option>`).join("")}</select></label>`, "插入");
         if (!choice) break;
         target = choice.file;
       }
       if (projectId !== state.ws?.project.id) break;
-      await request("pasteCitation", { ...message, projectId, clipboard: info.text, bibliographyFile: target });
+      await request("pasteCitation", { ...message, projectId, clipboard: info.text, bibliographyFile: target,
+        confirmedExistingKeys: info.existingKeys });
       break;
     }
     case "insertImage":

@@ -19,6 +19,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // bibliography.js
 var bibliography_exports = {};
 __export(bibliography_exports, {
+  citationInfo: () => citationInfo,
   citationPlan: () => citationPlan,
   parseBibTeX: () => parseBibTeX
 });
@@ -160,20 +161,34 @@ function parseBibTeX(input, strict = true) {
     }
     if (!fields.size || text[p++] !== close) fail();
     keys.add(key);
-    entries.push({ key, type, text: text.slice(start, p) });
+    entries.push({ key, type, text: text.slice(start, p), from: start, to: p });
   }
   if (strict && !entries.length) throw new Error("\u526A\u8D34\u677F\u4E2D\u6CA1\u6709\u53EF\u5F15\u7528\u7684 BibTeX \u6587\u732E\uFF0C\u672A\u63D2\u5165\u4EFB\u4F55\u5185\u5BB9\u3002");
   return { entries, keys: [...keys] };
 }
-function citationPlan(clipboard, existing, projectKeys = []) {
+function citationInfo(clipboard, projectKeys = []) {
   const parsed = parseBibTeX(clipboard);
   const keys = new Set(projectKeys);
-  for (const key of parsed.keys)
-    if (keys.has(key)) throw new Error(`\u9879\u76EE\u4E2D\u5DF2\u5B58\u5728\u6587\u732E\u952E ${key}\uFF0C\u672A\u63D2\u5165\u4EFB\u4F55\u5185\u5BB9\u3002`);
+  return {
+    keys: parsed.keys,
+    existingKeys: parsed.keys.filter((key) => keys.has(key)),
+    newKeys: parsed.keys.filter((key) => !keys.has(key))
+  };
+}
+function citationPlan(clipboard, existing, projectKeys = [], confirmedExistingKeys = []) {
+  const parsed = parseBibTeX(clipboard);
+  const info = citationInfo(clipboard, projectKeys);
+  const confirmed = new Set(confirmedExistingKeys);
+  for (const key of info.existingKeys)
+    if (!confirmed.has(key)) throw new Error(`\u9879\u76EE\u4E2D\u5DF2\u5B58\u5728\u6587\u732E\u952E ${key}\uFF0C\u8BF7\u786E\u8BA4\u662F\u5426\u4EC5\u63D2\u5165\u5F15\u7528\uFF0C\u672A\u4FEE\u6539\u4EFB\u4F55\u5185\u5BB9\u3002`);
+  let addition = clipboard.replace(/^\uFEFF/, "");
+  for (const entry of [...parsed.entries].reverse())
+    if (info.existingKeys.includes(entry.key))
+      addition = addition.slice(0, entry.from) + addition.slice(entry.to);
   const separator = existing.length ? existing.endsWith("\n\n") ? "" : existing.endsWith("\n") ? "\n" : "\n\n" : "";
   return {
-    text: existing + separator + clipboard.replace(/^\uFEFF/, "").trim().replaceAll("\r\n", "\n") + "\n",
+    text: info.newKeys.length ? existing + separator + addition.trim().replaceAll("\r\n", "\n") + "\n" : existing,
     citation: "\\cite{" + parsed.keys.join(",") + "}",
-    keys: parsed.keys
+    ...info
   };
 }

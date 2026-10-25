@@ -26,6 +26,7 @@ import {
 } from "./files.js";
 import { findToolchain } from "./compiler.js";
 import { citationClipboard, insertClipboardCitation } from "./bibliography.js";
+import { projectPDFName } from "../../build/workbench/project-names.js";
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -299,9 +300,7 @@ const actions = {
     if (!ws.pdfData) throw new Error("请先编译生成 PDF");
     const result = await dialog.showSaveDialog(window, {
       title: "导出 PDF",
-      defaultPath: path
-        .basename(ws.config.root || "document.tex")
-        .replace(/\.tex$/i, ".pdf"),
+      defaultPath: projectPDFName(ws.project),
       filters: [{ name: "PDF", extensions: ["pdf"] }],
     });
     if (!result.canceled) await atomicWrite(result.filePath, ws.pdfData);
@@ -426,8 +425,8 @@ const actions = {
   pasteCitation: async (p) => {
     const ws = requireWorkspace();
     if (p.projectId !== ws.project.id) throw new Error("项目已切换，请重试");
-    const file = await insertClipboardCitation(ws, p);
-    notice("已追加文献到 " + file + " 并插入引用");
+    const result = await insertClipboardCitation(ws, p);
+    notice(result.file ? "已追加新文献到 " + result.file + " 并插入引用" : "已插入引用，未修改文献文件");
   },
   save: async () => {
     if (showingLibrary) return;

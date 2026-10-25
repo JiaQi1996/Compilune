@@ -28,6 +28,18 @@ struct Project: Codable, Identifiable, Equatable {
         self.path = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
     }
     var url: URL { URL(fileURLWithPath: path) }
+    var pdfExportName: String {
+        let display = alias.flatMap { $0.isEmpty ? nil : $0 } ?? url.lastPathComponent
+        let invalid = CharacterSet(charactersIn: "<>:\"/\\|?*").union(.controlCharacters)
+        var filename = display.unicodeScalars.map { invalid.contains($0) ? "-" : String($0) }.joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        while filename.last == "." || filename.last == " " { filename.removeLast() }
+        if filename.isEmpty { filename = "document" }
+        if filename.range(of: #"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            filename = "_" + filename
+        }
+        return filename + ".pdf"
+    }
 }
 struct ProjectConfig: Codable {
     var root: String

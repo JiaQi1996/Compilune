@@ -1,7 +1,7 @@
 {
   "name": "compilune-windows",
   "productName": "Compilune",
-  "version": "0.2.10",
+  "version": "0.2.13",
   "description": "A local LaTeX writing workspace for Windows",
   "author": "JiaQi",
   "license": "MIT",

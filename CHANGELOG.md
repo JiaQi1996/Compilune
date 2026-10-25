@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.13
+
+- Editor tabs retain each file's last reading viewport independently of its caret. CodeMirror scroll snapshots restore the visible text and its screen position after line-height measurement, including rapid switches, renames and edits to inactive files.
+- New files start at the top; explicit outline, search and SyncTeX destinations take priority over tab viewport restoration.
+- macOS and Windows installers are synchronized at 0.2.13: macOS ARM64/Intel DMGs and Windows ARM64/x64 EXEs, with one SHA256 checksum per installer. macOS bundle build is 14. Windows packages include the completion, citation and export fixes introduced in 0.2.12.
+
+## 0.2.12
+
+- macOS installers updated to 0.2.12. Windows source includes the fixes below; Windows installers remain at 0.2.11 pending a later packaging run.
+- Stabilized completion selection and scrolling by comparing native JSON dictionaries independently of property order and removing the completion/index feedback loop.
+- Preserved the editor viewport before mouse hit testing when WKWebView refocuses a scrolled document, fixing clicks landing at an old cursor location. Native document updates now apply minimal changes without rebuilding the editor; citation insertion keeps the cursor after the citation and retains the reading position.
+- Existing BibTeX keys now prompt to reuse references without appending duplicate entries. Mixed clipboards append only new entries, retain string definitions and support one-step undo.
+- PDF export now defaults to the project alias, falling back to the project folder name, with portable filename sanitization on both platforms.
+
+## 0.2.11
+
+- Synchronized macOS and Windows application versions, installer names and documentation; macOS bundle build number is now 12.
+- Default pdfLaTeX engine; independent file/outline expansion and scroll state, with files initially collapsed and outlines expanded one level.
+- Clipboard BibTeX insertion with citation shortcuts, validation and a default bibliography choice; chained citation, reference, path and mirrored environment completion. Enter accepts a completion and Tab moves between snippet fields.
+- Project aliases, duplicate-name guidance and project-location checks when creating or reopening projects.
+- Refined project cards with larger PDF previews, folder paths, truncated titles and 1.5-second hover hints; corrected macOS formatting button text.
+
 ## 0.2.10
 
 - Bundled private Perl 5.42.3 on macOS arm64/x86_64 and Windows x64, including Windows ARM64 through x64 emulation.

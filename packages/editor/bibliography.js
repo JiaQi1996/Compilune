@@ -119,21 +119,38 @@ export function parseBibTeX(input, strict = true) {
     }
     if (!fields.size || text[p++] !== close) fail();
     keys.add(key);
-    entries.push({ key, type, text: text.slice(start, p) });
+    entries.push({ key, type, text: text.slice(start, p), from: start, to: p });
   }
   if (strict && !entries.length) throw new Error("剪贴板中没有可引用的 BibTeX 文献，未插入任何内容。");
   return { entries, keys: [...keys] };
 }
 
-export function citationPlan(clipboard, existing, projectKeys = []) {
+export function citationInfo(clipboard, projectKeys = []) {
   const parsed = parseBibTeX(clipboard);
   const keys = new Set(projectKeys);
-  for (const key of parsed.keys)
-    if (keys.has(key)) throw new Error(`项目中已存在文献键 ${key}，未插入任何内容。`);
+  return {
+    keys: parsed.keys,
+    existingKeys: parsed.keys.filter((key) => keys.has(key)),
+    newKeys: parsed.keys.filter((key) => !keys.has(key)),
+  };
+}
+
+export function citationPlan(clipboard, existing, projectKeys = [], confirmedExistingKeys = []) {
+  const parsed = parseBibTeX(clipboard);
+  const info = citationInfo(clipboard, projectKeys);
+  const confirmed = new Set(confirmedExistingKeys);
+  for (const key of info.existingKeys)
+    if (!confirmed.has(key)) throw new Error(`项目中已存在文献键 ${key}，请确认是否仅插入引用，未修改任何内容。`);
+  let addition = clipboard.replace(/^\uFEFF/, "");
+  // Remove duplicate entries by source range, retaining comments and @string
+  // definitions needed by new entries in a mixed clipboard.
+  for (const entry of [...parsed.entries].reverse())
+    if (info.existingKeys.includes(entry.key))
+      addition = addition.slice(0, entry.from) + addition.slice(entry.to);
   const separator = existing.length ? (existing.endsWith("\n\n") ? "" : existing.endsWith("\n") ? "\n" : "\n\n") : "";
   return {
-    text: existing + separator + clipboard.replace(/^\uFEFF/, "").trim().replaceAll("\r\n", "\n") + "\n",
+    text: info.newKeys.length ? existing + separator + addition.trim().replaceAll("\r\n", "\n") + "\n" : existing,
     citation: "\\cite{" + parsed.keys.join(",") + "}",
-    keys: parsed.keys,
+    ...info,
   };
 }

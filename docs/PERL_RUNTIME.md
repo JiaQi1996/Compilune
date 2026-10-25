@@ -1,6 +1,6 @@
 # Private Perl runtime / 私有 Perl 运行时
 
-Compilune 0.2.10 bundles Perl 5.42.3 for its latexmk workflow. Users still install a TeX distribution separately. The bundled runtime is not a general Perl development environment or a replacement for every optional Perl/CPAN dependency used by arbitrary TeX scripts.
+Since version 0.2.10, Compilune bundles Perl 5.42.3 for its latexmk workflow. Users still install a TeX distribution separately. The bundled runtime is not a general Perl development environment or a replacement for every optional Perl/CPAN dependency used by arbitrary TeX scripts.
 
 ## Selection and isolation
 

@@ -8,7 +8,7 @@ English · [简体中文](README.zh-CN.md)
 
 Compilune opens to a project library and brings a CodeMirror 6 source editor, local compilation, and a PDF preview into one native macOS workspace. It was built for personal writing and is shared under the MIT license.
 
-Current version: **0.2.10**. The application interface is currently primarily **Simplified Chinese**; built-in completion descriptions and the default document template are English.
+Current version: **0.2.13** on both macOS and Windows. All four installers use the same release version. The application interface is currently primarily **Simplified Chinese**; built-in completion descriptions and the default document template are English.
 
 ## Download
 
@@ -23,7 +23,7 @@ Choose an installer matching your platform and processor:
 | Windows preview | ARM64 | `-windows-arm64-setup.exe` |
 | Windows preview | Intel / AMD 64-bit | `-windows-x64-setup.exe` |
 
-Available versions and platforms depend on the assets attached to each release. The current local release contains four installers and four matching `.sha256` files. On macOS, open the DMG and drag Compilune into Applications; on Windows, run the matching EXE installer. A TeX distribution must be installed separately.
+Available versions and platforms depend on the assets attached to each release. The local `dist/` contains four version **0.2.13** installers: macOS ARM64/Intel and Windows ARM64/x64, each with a matching `.sha256` file. On macOS, open the DMG and drag Compilune into Applications; on Windows, run the matching EXE installer. A TeX distribution must be installed separately.
 
 ## macOS screenshots
 
@@ -55,13 +55,14 @@ Actual macOS application windows, using demonstration projects. The current inte
 
 - **Project management:** local folders, optional aliases, pinned projects, sorting, archiving, and folder relinking. Duplicate aliases and creation at occupied or registered locations are blocked; matching folder names at different locations prompt an alias suggestion.
 - **Library cards:** fixed-size cards with centered PDF covers at 80% of card width. Cards show the project name, a folder path that wraps to two lines, and the edited time. Hover to read complete names and paths; tooltips appear after 1.5 seconds.
-- **Source editing:** CodeMirror 6 highlighting, command/environment completion, project macros, citations, labels, and file paths. Command completion continues into citation keys, labels, paths, and environment names. Enter accepts the highlighted completion; Tab advances snippet fields or moves into an environment body. `begin`/`end` names remain linked.
+- **Source editing:** CodeMirror 6 highlighting, command/environment completion, project macros, citations, labels, and file paths. Command completion continues into citation keys, labels, paths, and environment names. Completion selection responds to Up/Down, and wheel/scrollbar browsing keeps its position. Enter accepts the highlighted completion; Tab advances snippet fields or moves into an environment body. `begin`/`end` names remain linked.
 - **Writing tools:** optional formatting and insertion toolbar, configurable shortcuts, command palette, file search, line/column jumps, and definition navigation. Formatting tools insert LaTeX source; the editor is not a rendered WYSIWYG document view.
 - **Find and replace:** regular expressions within a file; project-wide plain-text search and replacement preview with grouped undo.
+- **Editor tabs:** each file restores its last reading position independently of the caret, including rapid tab switches and renamed files. Outline, search and SyncTeX jumps still navigate to the requested destination.
 - **File navigation:** folders first, nested indentation, new folders/TeX/Bib files, project-local drag moves, and a clickable `.tex` outline. The file tree starts fully collapsed; the outline initially expands only its top level. Both retain independent expansion and scroll positions when switching.
 - **Local builds:** latexmk with pdfLaTeX (default), XeLaTeX, or LuaLaTeX; configurable main file, working/output directories, explicit rc file, and shell escape.
 - **PDF preview:** search, zoom, page navigation, last-successful-preview caching, and bidirectional SyncTeX. Double-click a PDF location to jump to source; use `⌘⇧J` on macOS or `Ctrl+Shift+J` on Windows to locate the PDF from source.
-- **Clipboard bibliography:** validate copied BibTeX, append it to a project `.bib`, and insert `\cite{key}` at the original cursor with `⌘⇧B` (Windows: `Ctrl+Shift+B`). Choose a default bibliography in project configuration or ask on each insertion when multiple files exist. Invalid input and duplicate keys make no changes; one undo reverses both edits.
+- **Clipboard bibliography:** validate copied BibTeX, append it to a project `.bib`, and insert `\cite{key}` at the original cursor with `⌘⇧B` (Windows: `Ctrl+Shift+B`). Choose a default bibliography in project configuration or ask on each insertion when multiple files exist. Invalid input makes no changes. Existing citation keys prompt for confirmation: reuse them without changing the bibliography, or append only new entries from a mixed clipboard. One undo reverses the insertion. After insertion, the caret stays after the citation and the reading position is retained.
 - **Saving:** optional autosave with a 1–30 second delay, separate compile-after-manual-save and compile-after-autosave settings, unsaved-change confirmation, and recovery snapshots.
 - **Personalization:** live system appearance, explicit light/dark modes, independent interface/code font sizes with 8–30 sliders, local custom templates, and optional build-file cleanup.
 - **Toolchain setup:** automatic TeX discovery, distribution download options, and a bundled private Perl runtime for `latexmk`. TeX itself is installed separately.
@@ -130,12 +131,14 @@ SyncTeX needs a successful build of the latest source. Stale or cached PDFs must
 
 Optional cleanup removes recognized auxiliary files after a successful build while retaining PDF, SyncTeX, and source files. Failed builds retain diagnostic files. Cleanup can make the next build slower.
 
+PDF export defaults to the project alias, or the project folder name when no alias is set. Characters unavailable in filenames are replaced automatically.
+
 ### Clipboard bibliography
 
 1. Create or import a project `.bib` file and load it in your document as usual.
 2. In project configuration, select a default bibliography or ask on each insertion when multiple files exist.
 3. Copy one or more BibTeX entries, place the cursor in a `.tex` document, and use the insertion button or `⌘⇧B` / `Ctrl+Shift+B`.
-4. Compilune validates the entries, appends them to the bibliography, and inserts `\cite{key}` at the captured selection. Empty input, invalid entries, duplicate keys, and cancellation leave both files unchanged. One undo reverses both edits; saving follows the current autosave policy.
+4. Compilune validates the entries, appends them to the bibliography, and inserts `\cite{key}` at the captured selection. Empty input, invalid entries, and cancellation leave both files unchanged. Existing keys prompt for confirmation; citation-only reuse leaves every `.bib` unchanged, while a mixed clipboard appends only new entries. One undo reverses the insertion; saving follows the current autosave policy.
 
 ## TeX distributions and private Perl
 
@@ -186,7 +189,7 @@ This also refreshes the bundled editor license notices. Commit both the edited s
 ./scripts/package.sh --arch x86_64
 ```
 
-The repository-root `dist/` is shared by macOS and Windows and contains only four installers and their four matching checksums. Each `.sha256` file covers its corresponding DMG or EXE. For example, run `shasum -a 256 -c Compilune-0.2.10-arm64.sha256` inside `dist/` on macOS, or compare `Get-FileHash -Algorithm SHA256` with the matching file on Windows. The macOS packager also verifies the app signature and DMG. `VERSION` holds the release version; `COMPILUNE_BUILD_NUMBER` optionally overrides the bundle build number. Builds use ad-hoc signing by default; a distribution signing identity can be supplied with `COMPILUNE_SIGN_IDENTITY`. Developer ID signing and notarization are not included in the published local-build verification.
+The repository-root `dist/` is shared by macOS and Windows and contains only four installers and their four matching checksums. Each `.sha256` file covers its corresponding DMG or EXE. For example, run `shasum -a 256 -c Compilune-0.2.13-arm64.sha256` inside `dist/` on macOS, or compare `Get-FileHash -Algorithm SHA256` with the matching file on Windows. The macOS packager also verifies the app signature and DMG. `VERSION` holds the release version; `COMPILUNE_BUILD_NUMBER` optionally overrides the bundle build number. Builds use ad-hoc signing by default; a distribution signing identity can be supplied with `COMPILUNE_SIGN_IDENTITY`. Developer ID signing and notarization are not included in the published local-build verification.
 
 The scripts use SwiftPM's `native` backend for the tested Command Line Tools environment. Newer Swift tools report this backend as deprecated; it currently builds successfully here. Explicit property-wrapper aliases avoid a missing SwiftUI macro plugin in that environment.
 

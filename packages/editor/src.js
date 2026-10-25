@@ -73,6 +73,13 @@ let path = "",
   indexSignature = "",
   flushToken = null;
 const documents = new Map();
+const documentScrolls = new Map();
+// Native dictionaries do not guarantee JSON property order. Compare their
+// contents so an unchanged index cannot restart completion through the bridge.
+const signatureOf = (value) => JSON.stringify(value, (_key, item) =>
+  item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, item[key]]))
+    : item);
 const style = new Compartment();
 const bindings = new Compartment();
 let nativeHistory = false,
@@ -434,7 +441,6 @@ for (const name of [
   if (!commandWords[name]) commandWords[name] = [name, "LaTeX command"];
 }
 function completions(context) {
-  post({ type: "requestIndex" });
   const before = context.state.sliceDoc(
     Math.max(0, context.pos - 400),
     context.pos,
@@ -536,6 +542,12 @@ function position() {
     scroll: view.scrollDOM.scrollTop,
   };
 }
+function focusEditor(editor = view) {
+  const top = editor.scrollDOM.scrollTop, left = editor.scrollDOM.scrollLeft;
+  editor.focus();
+  editor.scrollDOM.scrollTop = top;
+  editor.scrollDOM.scrollLeft = left;
+}
 function reportPosition() {
   if (path && !restoring) post({ type: "position", path, ...position() });
 }
@@ -605,7 +617,7 @@ function wrap(left, right) {
     selection: EditorSelection.single(anchor, head),
     userEvent: "input.format",
   });
-  view.focus();
+  focusEditor();
   return true;
 }
 function list(ordered) {
@@ -631,7 +643,7 @@ function replaceRange(text) {
     selection: { anchor: s.from + text.length },
     userEvent: "input.insert",
   });
-  view.focus();
+  focusEditor();
   return true;
 }
 function currentLocation() {
@@ -917,6 +929,7 @@ function command(name) {
     case "fontReset":
       return font(0);
     case "completion":
+      post({ type: "requestIndex" });
       return startCompletion(view);
     case "comment":
       return toggleLineComment(view);
@@ -999,6 +1012,18 @@ const extensions = [
   highlightActiveLineGutter(),
   highlightActiveLine(),
   drawSelection(),
+  EditorView.domEventHandlers({
+    mousedown(event, editor) {
+      if (event.button === 0 && !editor.hasFocus && editor.contentDOM.contains(event.target)) {
+        // WKWebView can report preventScroll support while still scrolling to
+        // the old caret on focus. Restore the viewport before CodeMirror maps
+        // this mouse event to a document position, retaining its selection and
+        // drag handling for single/double/modified clicks.
+        focusEditor(editor);
+      }
+      return false;
+    },
+  }),
   history(),
   indentOnInput(),
   bracketMatching(),
@@ -1067,14 +1092,20 @@ window.folio = {
   receive(message) {
     switch (message.type) {
       case "open": {
+        clearTimeout(window.positionTimer);
+        // A reading position belongs to the file, independently of its caret.
+        // Flush any pending scroll restore before saving a rapidly switched tab.
+        if (path && documents.has(path)) {
+          view.lineBlockAtHeight(view.scrollDOM.scrollTop);
+          documents.set(path, view.state);
+          documentScrolls.set(path, view.scrollSnapshot());
+        }
         reportPosition();
-        if (path) documents.set(path, view.state);
         path = message.path;
         const existing = documents.get(path);
         restoring = true;
-        view.setState(
-          existing || EditorState.create({ doc: message.text, extensions }),
-        );
+        if (existing !== view.state)
+          view.setState(existing || EditorState.create({ doc: message.text, extensions }));
         view.dispatch({ effects: style.reconfigure(theme()) });
         configureBindings();
         if (message.line) {
@@ -1094,7 +1125,6 @@ window.folio = {
               Math.min(len, p.head || 0),
             ),
           });
-          view.scrollDOM.scrollTop = p.scroll || 0;
         }
         if (Number.isInteger(message.anchor)) {
           const len = view.state.doc.length;
@@ -1104,11 +1134,25 @@ window.folio = {
               Math.min(len, message.head ?? message.anchor),
             ),
           });
-          view.scrollDOM.scrollTop = message.scroll || 0;
         }
         document.querySelector("#file-path").textContent = path;
+        focusEditor();
+        if (Number.isInteger(message.anchor)) {
+          view.scrollDOM.scrollTop = message.scroll || 0;
+          view.dispatch({ effects: view.scrollSnapshot() });
+        } else if (!message.line) {
+          const snapshot = documentScrolls.get(path);
+          if (snapshot) view.dispatch({ effects: snapshot });
+          else {
+            view.scrollDOM.scrollTop = message.position?.scroll || 0;
+            view.dispatch({ effects: view.scrollSnapshot() });
+          }
+        }
+        // Let CodeMirror restore the viewport against measured line heights,
+        // rather than inheriting the previous tab's scrollTop or following its caret.
+        view.lineBlockAtHeight(view.scrollDOM.scrollTop);
+        documents.set(path, view.state);
         restoring = false;
-        view.focus();
         reportPosition();
         break;
       }
@@ -1116,16 +1160,27 @@ window.folio = {
         const state =
           message.path === path ? view.state : documents.get(message.path);
         if (state) {
-          const next = state.update({
-            changes: { from: 0, to: state.doc.length, insert: message.text },
+          const previous = state.doc.toString(), text = message.text;
+          if (previous === text) break;
+          let from = 0, to = previous.length, end = text.length;
+          while (from < to && from < end && previous.charCodeAt(from) === text.charCodeAt(from)) from++;
+          while (to > from && end > from && previous.charCodeAt(to - 1) === text.charCodeAt(end - 1)) { to--; end--; }
+          const transaction = state.update({
+            changes: { from, to, insert: text.slice(from, end) },
             annotations: Transaction.addToHistory.of(false),
-          }).state;
-          documents.set(message.path, next);
+          });
           if (message.path === path) {
             restoring = true;
-            view.setState(next);
+            // Keep the mounted view and its measured viewport. Recreating it
+            // maps the caret to EOF and loses the scroll anchor during a
+            // native multi-file citation edit.
+            view.dispatch(transaction);
             restoring = false;
+          } else {
+            const snapshot = documentScrolls.get(message.path)?.map(transaction.changes);
+            if (snapshot) documentScrolls.set(message.path, snapshot);
           }
+          documents.set(message.path, transaction.state);
         }
         break;
       }
@@ -1133,6 +1188,10 @@ window.folio = {
         if (documents.has(message.path)) {
           documents.set(message.newPath, documents.get(message.path));
           documents.delete(message.path);
+        }
+        if (documentScrolls.has(message.path)) {
+          documentScrolls.set(message.newPath, documentScrolls.get(message.path));
+          documentScrolls.delete(message.path);
         }
         if (path === message.path) {
           path = message.newPath;
@@ -1144,9 +1203,11 @@ window.folio = {
         break;
       case "forget":
         documents.delete(message.path);
+        documentScrolls.delete(message.path);
         break;
       case "reset":
         documents.clear();
+        documentScrolls.clear();
         navigation = [];
         forwardNavigation = [];
         path = "";
@@ -1170,14 +1231,14 @@ window.folio = {
           ),
         });
         view.scrollDOM.scrollTop = message.scroll || 0;
-        if (message.focus) view.focus();
+        if (message.focus) focusEditor();
         break;
       }
       case "insert":
         replaceRange(message.text);
         break;
       case "index": {
-        const signature = JSON.stringify([message.symbols || [], message.files || []]);
+        const signature = signatureOf([message.symbols || [], message.files || []]);
         const changed = signature !== indexSignature;
         indexSignature = signature;
         symbols = message.symbols || [];
@@ -1187,7 +1248,7 @@ window.folio = {
         break;
       }
       case "options": {
-        const signature = JSON.stringify(message);
+        const signature = signatureOf(message);
         if (signature === optionsSignature) break;
         optionsSignature = signature;
         if (message.platform) hostPlatform = message.platform;
@@ -1256,7 +1317,7 @@ document.querySelector("#picker-query").onkeydown = (e) => {
         scrollIntoView: true,
       });
       document.querySelector("#picker").close();
-      view.focus();
+      focusEditor();
     } else document.querySelector("#picker-results button")?.click();
   }
   if (e.key === "ArrowDown") {

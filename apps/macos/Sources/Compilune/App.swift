@@ -905,7 +905,8 @@ struct WorkspaceView: View {
     func exportPDF() {
         guard let data = workspace.pdfData else { return }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "main.pdf"
+        panel.nameFieldStringValue = workspace.project.pdfExportName
+        panel.allowedContentTypes = [.pdf]
         if panel.runModal() == .OK, let url = panel.url {
             do { try data.write(to: url, options: .atomic) } catch {
                 workspace.error = error.localizedDescription

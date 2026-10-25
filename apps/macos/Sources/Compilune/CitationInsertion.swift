@@ -34,7 +34,7 @@ final class BibliographyParser {
     func insertClipboardCitation(_ request: [String: Any]) {
         insertCitation(request, clipboard: NSPasteboard.general.string(forType: .string) ?? "")
     }
-    func insertCitation(_ request: [String: Any], clipboard: String) {
+    func insertCitation(_ request: [String: Any], clipboard: String, confirmedExistingKeys: [String] = []) {
         do {
             guard let path = request["path"] as? String, path == selected,
                 path.lowercased().hasSuffix(".tex"), let source = buffers[path],
@@ -45,28 +45,8 @@ final class BibliographyParser {
             let bibs = files.filter { !$0.hasDirectoryPath && $0.pathExtension.lowercased() == "bib" }
                 .map { relative($0, to: project.url) }.sorted()
             guard !bibs.isEmpty else { throw BuildError(message: "项目中没有 .bib 文件，请先新建或导入文献文件") }
-            let target: String
-            if !bibliographyFile.isEmpty {
-                guard bibs.contains(bibliographyFile) else {
-                    throw BuildError(message: "默认文献文件不存在，请在项目配置中重新选择")
-                }
-                target = bibliographyFile
-            } else if bibs.count == 1 {
-                target = bibs[0]
-            } else {
-                let alert = NSAlert()
-                alert.messageText = "选择文献文件"
-                alert.informativeText = "文献将追加到所选 .bib 的底部。可在项目配置中设置默认文件。"
-                let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 340, height: 28))
-                popup.addItems(withTitles: bibs)
-                alert.accessoryView = popup
-                alert.addButton(withTitle: "插入").toolTip = "追加文献并在原光标处插入引用"
-                alert.addButton(withTitle: "取消").toolTip = "取消，不修改任何文稿或文献"
-                guard alert.runModal() == .alertFirstButtonReturn else { return }
-                target = bibs[popup.indexOfSelectedItem]
-            }
             var keys: [String] = []
-            var targetBuffer: SourceBuffer?
+            var snapshots: [String: SourceBuffer] = [:]
             for bib in bibs {
                 let url = project.url.appendingPathComponent(bib).resolvingSymlinksInPath()
                 guard url.path.hasPrefix(project.path + "/") else { throw BuildError(message: "文献文件必须位于项目内") }
@@ -77,31 +57,82 @@ final class BibliographyParser {
                 let buffer = buffers[bib] ?? SourceBuffer(text: disk, diskText: disk)
                 let parsed = try parser.call("parseBibTeX", [buffer.text, false])
                 keys += parsed["keys"] as? [String] ?? []
-                if bib == target { targetBuffer = buffer }
+                snapshots[bib] = buffer
             }
-            guard let bibBuffer = targetBuffer, selected == path, buffers[path]?.text == source.text,
+            let info = try parser.call("citationInfo", [clipboard, keys])
+            let existingKeys = info["existingKeys"] as? [String] ?? []
+            let newKeys = info["newKeys"] as? [String] ?? []
+            if !Set(existingKeys).isSubset(of: Set(confirmedExistingKeys)) {
+                let alert = NSAlert()
+                alert.messageText = "文献已存在"
+                alert.informativeText = "项目中已存在以下文献键：" + existingKeys.joined(separator: ", ") + "。" +
+                    (newKeys.isEmpty ? "是否仅在光标处插入引用？不会修改任何 .bib 文件。" :
+                        "已有文献不再追加；新文献将追加到所选 .bib，并在光标处插入全部引用。")
+                alert.addButton(withTitle: newKeys.isEmpty ? "仅插入引用" : "复用已有文献并插入")
+                    .toolTip = "保留已有文献条目，不重复追加或覆盖"
+                alert.addButton(withTitle: "取消").toolTip = "取消，不修改任何文稿或文献"
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                // A modal can process other events. Re-read the source and all
+                // bibliographies before applying the confirmed operation.
+                insertCitation(request, clipboard: clipboard, confirmedExistingKeys: existingKeys)
+                return
+            }
+            let target: String
+            if newKeys.isEmpty {
+                target = ""
+            } else if !bibliographyFile.isEmpty {
+                guard bibs.contains(bibliographyFile) else {
+                    throw BuildError(message: "默认文献文件不存在，请在项目配置中重新选择")
+                }
+                target = bibliographyFile
+            } else if bibs.count == 1 {
+                target = bibs[0]
+            } else {
+                let alert = NSAlert()
+                alert.messageText = "选择文献文件"
+                alert.informativeText = "新文献将追加到所选 .bib 的底部。可在项目配置中设置默认文件。"
+                let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 340, height: 28))
+                popup.addItems(withTitles: bibs)
+                alert.accessoryView = popup
+                alert.addButton(withTitle: "插入").toolTip = "追加新文献并在原光标处插入引用"
+                alert.addButton(withTitle: "取消").toolTip = "取消，不修改任何文稿或文献"
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                target = bibs[popup.indexOfSelectedItem]
+            }
+            guard selected == path, buffers[path]?.text == source.text, !composing,
                 let from = request["from"] as? Int, let to = request["to"] as? Int,
                 from >= 0, to >= from, to <= (source.text as NSString).length
             else { throw BuildError(message: "文稿已变化，请重新定位后插入，未修改任何内容") }
-            let plan = try parser.call("citationPlan", [clipboard, bibBuffer.text, keys])
+            for (bib, snapshot) in snapshots {
+                let disk = try String(contentsOf: project.url.appendingPathComponent(bib), encoding: .utf8)
+                guard disk == snapshot.diskText,
+                    buffers[bib].map({ $0.text == snapshot.text && $0.diskText == snapshot.diskText }) ?? true
+                else { throw BuildError(message: "文献文件已变化，请重新插入，未修改任何内容") }
+            }
+            let bibBuffer = snapshots[target]
+            let plan = try parser.call("citationPlan", [clipboard, bibBuffer?.text ?? "", keys, confirmedExistingKeys])
             guard let bibText = plan["text"] as? String, let citation = plan["citation"] as? String else {
                 throw BuildError(message: "无法生成文献引用")
             }
             let sourceText = (source.text as NSString).replacingCharacters(
                 in: NSRange(location: from, length: to - from), with: citation)
-            buffers[target] = bibBuffer
-            if !tabs.contains(target) { tabs.append(target) }
-            recordEdit(
-                before: [path: source.text, target: bibBuffer.text],
-                after: [path: sourceText, target: bibText], name: "插入剪贴板文献")
-            applyHistory([path: sourceText, target: bibText])
+            var before = [path: source.text]
+            var after = [path: sourceText]
+            if let bibBuffer, !newKeys.isEmpty {
+                before[target] = bibBuffer.text
+                after[target] = bibText
+                buffers[target] = bibBuffer
+                if !tabs.contains(target) { tabs.append(target) }
+            }
+            recordEdit(before: before, after: after, name: "插入剪贴板文献")
+            applyHistory(after)
             let cursor = from + (citation as NSString).length
             let scroll = request["scroll"] as? Double ?? 0
             positions[path] = DocumentPosition(anchor: cursor, head: cursor, scroll: scroll)
             send?([
                 "type": "restorePosition", "anchor": cursor, "head": cursor, "scroll": scroll, "focus": true,
             ])
-            status = "已追加文献到 \(target) 并插入引用"
+            status = newKeys.isEmpty ? "已插入引用，未修改文献文件" : "已追加新文献到 \(target) 并插入引用"
         } catch { self.error = error.localizedDescription }
     }
 }
