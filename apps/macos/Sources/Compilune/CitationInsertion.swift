@@ -30,11 +30,59 @@ final class BibliographyParser {
     }
 }
 
+final class CitationPreviewStack: NSStackView {
+    override var isFlipped: Bool { true }
+}
+
 @MainActor extension Workspace {
+    static func citationPreviewAccessory(_ entries: [[String: Any]], existing: Set<String>) -> NSView {
+        let width: CGFloat = 380
+        let stack = CitationPreviewStack()
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
+        for entry in entries {
+            let content = NSStackView()
+            content.orientation = .vertical; content.alignment = .leading; content.spacing = 7
+            let key = entry["key"] as? String ?? ""
+            var items: [(String, Bool)] = []
+            items.append((key + (existing.contains(key) ? " · 已存在，将复用" : ""), false))
+            let title = entry["title"] as? String ?? ""
+            items.append((title.isEmpty ? "标题未提供" : title, true))
+            let fields = [("第一作者", "author"), ("发表年份", "year"), ("期刊 / 会议", "venue")]
+            for (label, name) in fields {
+                let value = entry[name] as? String ?? ""
+                items.append((label + "：" + (value.isEmpty ? "未提供" : value), false))
+            }
+            for (text, title) in items {
+                let field = NSTextField(wrappingLabelWithString: text)
+                field.font = title ? NSFont.boldSystemFont(ofSize: Preferences.shared.uiSize) : NSFont.systemFont(ofSize: max(10, Preferences.shared.uiSize - 1))
+                field.isSelectable = true
+                field.translatesAutoresizingMaskIntoConstraints = false
+                field.widthAnchor.constraint(equalToConstant: width - 28).isActive = true
+                content.addArrangedSubview(field)
+            }
+            let box = NSBox()
+            box.boxType = .custom; box.titlePosition = .noTitle; box.cornerRadius = 10
+            box.fillColor = .controlBackgroundColor; box.borderColor = .separatorColor; box.borderWidth = 1
+            box.contentView = content
+            content.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                box.widthAnchor.constraint(equalToConstant: width),
+                content.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 14),
+                content.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -14),
+                content.topAnchor.constraint(equalTo: box.topAnchor, constant: 12),
+                content.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -12),
+            ])
+            stack.addArrangedSubview(box)
+        }
+        stack.frame = NSRect(x: 0, y: 0, width: width, height: max(60, stack.fittingSize.height))
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: width + 16, height: min(360, stack.frame.height)))
+        scroll.hasVerticalScroller = true; scroll.drawsBackground = false; scroll.documentView = stack
+        return scroll
+    }
     func insertClipboardCitation(_ request: [String: Any]) {
         insertCitation(request, clipboard: NSPasteboard.general.string(forType: .string) ?? "")
     }
-    func insertCitation(_ request: [String: Any], clipboard: String, confirmedExistingKeys: [String] = []) {
+    func insertCitation(_ request: [String: Any], clipboard: String, confirmedExistingKeys: [String] = [], previewConfirmed: Bool = false) {
         do {
             guard let path = request["path"] as? String, path == selected,
                 path.lowercased().hasSuffix(".tex"), let source = buffers[path],
@@ -62,19 +110,20 @@ final class BibliographyParser {
             let info = try parser.call("citationInfo", [clipboard, keys])
             let existingKeys = info["existingKeys"] as? [String] ?? []
             let newKeys = info["newKeys"] as? [String] ?? []
-            if !Set(existingKeys).isSubset(of: Set(confirmedExistingKeys)) {
+            if !previewConfirmed || !Set(existingKeys).isSubset(of: Set(confirmedExistingKeys)) {
                 let alert = NSAlert()
-                alert.messageText = "文献已存在"
-                alert.informativeText = "项目中已存在以下文献键：" + existingKeys.joined(separator: ", ") + "。" +
-                    (newKeys.isEmpty ? "是否仅在光标处插入引用？不会修改任何 .bib 文件。" :
-                        "已有文献不再追加；新文献将追加到所选 .bib，并在光标处插入全部引用。")
-                alert.addButton(withTitle: newKeys.isEmpty ? "仅插入引用" : "复用已有文献并插入")
+                alert.messageText = existingKeys.isEmpty ? "智能插入文献" : "文献已存在"
+                alert.informativeText = existingKeys.isEmpty ? "确认文献信息后，追加到文献文件并在原光标处插入引用。" :
+                    "项目中已存在以下文献键：" + existingKeys.joined(separator: ", ") + "。" +
+                    (newKeys.isEmpty ? "确认后仅插入引用，不修改 .bib。" : "已有文献不再追加；新文献追加到所选 .bib。")
+                alert.accessoryView = Self.citationPreviewAccessory(info["entries"] as? [[String: Any]] ?? [], existing: Set(existingKeys))
+                alert.addButton(withTitle: newKeys.isEmpty ? "仅插入引用" : existingKeys.isEmpty ? "插入文献" : "复用已有文献并插入")
                     .toolTip = "保留已有文献条目，不重复追加或覆盖"
                 alert.addButton(withTitle: "取消").toolTip = "取消，不修改任何文稿或文献"
                 guard alert.runModal() == .alertFirstButtonReturn else { return }
                 // A modal can process other events. Re-read the source and all
                 // bibliographies before applying the confirmed operation.
-                insertCitation(request, clipboard: clipboard, confirmedExistingKeys: existingKeys)
+                insertCitation(request, clipboard: clipboard, confirmedExistingKeys: existingKeys, previewConfirmed: true)
                 return
             }
             let target: String

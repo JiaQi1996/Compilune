@@ -51,6 +51,7 @@ import PDFKit
     func scheduleEditedBuffers() {
         writeRecovery()
         refreshIndexSoon()
+        if showSearch && !search.isEmpty { projectSearch(immediate: false) }
         autoTask?.cancel()
         saveTask?.cancel()
         guard !composing, !closingForNavigation, Preferences.shared.autoSaveEnabled else { return }
@@ -296,12 +297,18 @@ import PDFKit
             let snapshots = buffers.mapValues { $0.text }
             let sources = files.filter { ["tex", "bib", "sty", "cls"].contains($0.pathExtension) }
             let result = await Task.detached {
-                sources.flatMap { url -> [SourceSymbol] in
+                let parser = try? BibliographyParser()
+                return sources.flatMap { url -> [SourceSymbol] in
                     let path = relative(url, to: root)
                     guard let text = snapshots[path] ?? (try? String(contentsOf: url, encoding: .utf8)) else {
                         return []
                     }
-                    return TeXIndex.scan(text, path: path)
+                    let entries = (try? parser?.call("previewIndex", [text, path]))?["entries"] as? [[String: Any]] ?? []
+                    return TeXIndex.scan(text, path: path).map { value in
+                        var symbol = value
+                        symbol.preview = entries.first { $0["label"] as? String == symbol.label && $0["kind"] as? String == symbol.kind }?["preview"] as? [String: String] ?? [:]
+                        return symbol
+                    }
                 }
             }.value
             guard !Task.isCancelled, generation == indexGeneration else { return }

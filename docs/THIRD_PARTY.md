@@ -8,6 +8,7 @@ Compilune's original source is covered by the repository's [MIT License](../LICE
 | Lucide / Feather-derived icons | SVG editor icon assets | ISC with retained Feather/MIT attribution; [license text](../apps/macos/Sources/Compilune/Resources/Editor/LUCIDE-LICENSE.txt) |
 | Electron / Chromium | Windows runtime | Electron MIT, bundled Chromium and third-party notices |
 | PDF.js | Windows PDF rendering/search | Apache-2.0; full text copied into Windows resources |
+| KaTeX and bundled fonts | Offline math previews | MIT; [license text](../apps/macos/Sources/Compilune/Resources/Licenses/katex.txt) and generated editor notices |
 | Private Perl 5.42.3 | latexmk interpreter / fallback | Artistic-1.0-Perl OR GPL-1.0-or-later; module and native-library notices retained. See [runtime notices](../third_party/perl/README.md) and [runtime design](PERL_RUNTIME.md) |
 | electron-builder / NSIS | Windows installer build tools | Respective build-tool licenses and installer notices |
 | esbuild | Editor build tool only | MIT; installed from the npm lockfile, not bundled as a runtime |

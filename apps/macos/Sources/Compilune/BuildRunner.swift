@@ -5,6 +5,23 @@ struct BuildError: LocalizedError {
     let message: String
     var errorDescription: String? { message }
 }
+struct BuildOutputDecoder {
+    private var pending: [UInt8] = []
+    mutating func decode(_ data: Data, final: Bool = false) -> String {
+        pending.append(contentsOf: data)
+        var end = pending.count
+        if !final && !pending.isEmpty {
+            var start = pending.count - 1
+            while start > 0 && pending[start] & 0xC0 == 0x80 { start -= 1 }
+            let byte = pending[start]
+            let expected = byte & 0xE0 == 0xC0 ? 2 : byte & 0xF0 == 0xE0 ? 3 : byte & 0xF8 == 0xF0 ? 4 : 1
+            if pending.count - start < expected { end = start }
+        }
+        let text = String(decoding: pending[..<end], as: UTF8.self)
+        pending.removeFirst(end)
+        return text
+    }
+}
 final class BuildRunner: @unchecked Sendable {
     let root: URL
     let engine: String
@@ -119,11 +136,14 @@ final class BuildRunner: @unchecked Sendable {
                     self.lock.unlock()
                     if active { self.cancel() }
                 }
+                var decoder = BuildOutputDecoder()
                 while true {
                     let data = read.availableData
                     if data.isEmpty { break }
-                    output(String(decoding: data, as: UTF8.self))
+                    output(decoder.decode(data))
                 }
+                let tail = decoder.decode(Data(), final: true)
+                if !tail.isEmpty { output(tail) }
                 var status: Int32 = 0
                 while waitpid(child, &status, 0) < 0 && errno == EINTR {}
                 lock.lock()

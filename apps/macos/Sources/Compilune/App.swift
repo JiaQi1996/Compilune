@@ -675,6 +675,12 @@ struct WorkspaceView: View {
         VStack(spacing: 0) {
             HStack {
                 Button {
+                    workspace.sidebarVisible.toggle()
+                    workspace.persistSessionSoon()
+                } label: {
+                    Image(systemName: "sidebar.left")
+                }.help(workspace.sidebarVisible ? "隐藏文件与大纲侧边栏" : "显示文件与大纲侧边栏")
+                Button {
                     AppDelegate.shared.showLibrary()
                 } label: {
                     Image(systemName: "books.vertical")
@@ -691,19 +697,17 @@ struct WorkspaceView: View {
                 Button {
                     workspace.send?(["type": "command", "name": "pasteCitation"])
                 } label: {
-                    Image(systemName: "text.book.closed")
-                }.help(prefs.commandHint("pasteCitation", "插入剪贴板中的 BibTeX 文献并引用"))
+                    Image(systemName: "quote.bubble")
+                }.help(prefs.commandHint("pasteCitation", "智能插入剪贴板中的 BibTeX 文献并引用"))
+                .accessibilityLabel("智能插入文献")
+                Button { workspace.send?(["type": "command", "name": "deduplicateBibliography"]) } label: { Image(systemName: "checkmark.rectangle.stack") }
+                    .help(prefs.commandHint("deduplicateBibliography", "按题目和作者检查重复文献，预览后合并并修正引用"))
+                    .accessibilityLabel("智能文献去重")
                 Button(
                     workspace.running ? "停止" : "编译 ⌘R",
                     systemImage: workspace.running ? "stop.fill" : "play.fill"
                 ) { workspace.compile() }.help(workspace.running ? "停止当前编译（⌘.）" : "保存源码并使用本地 TeX 编译（⌘R）")
                     .buttonStyle(.borderedProminent).tint(sage)
-                Button {
-                    workspace.sidebarVisible.toggle()
-                    workspace.persistSessionSoon()
-                } label: {
-                    Image(systemName: "sidebar.left")
-                }.help(workspace.sidebarVisible ? "隐藏文件与大纲侧边栏" : "显示文件与大纲侧边栏")
                 Button {
                     workspace.previewVisible.toggle()
                     workspace.persistSessionSoon()
@@ -777,7 +781,8 @@ struct WorkspaceView: View {
                         if let data = workspace.pdfData {
                             PDFHost(
                                 data: data, location: workspace.pdfLocation, query: workspace.pdfQuery,
-                                zoomStep: workspace.pdfZoom, requestedPage: workspace.pdfPage,
+                                zoomStep: workspace.pdfZoom, fitRequest: workspace.pdfFitRequest,
+                                requestedPage: workspace.pdfPage,
                                 searchStep: workspace.pdfSearchStep,
                                 onSearchUpdate: { count, index in
                                     if workspace.pdfMatches != count { workspace.pdfMatches = count }
@@ -785,6 +790,11 @@ struct WorkspaceView: View {
                                 },
                                 onPageChanged: { page in
                                     if workspace.pdfPage != page { workspace.pdfPage = page }
+                                },
+                                onMetricsChanged: { count, percent in
+                                    guard workspace.pdfData == data else { return }
+                                    if workspace.pdfPageCount != count { workspace.pdfPageCount = count }
+                                    if workspace.pdfScalePercent != percent { workspace.pdfScalePercent = percent }
                                 },
                                 onCommandClick: { page, x, y in workspace.backwardSync(page: page, x: x, y: y)
                                 })
@@ -806,16 +816,19 @@ struct WorkspaceView: View {
                     Button("关闭") { workspace.showLog = false }.help("隐藏编译日志")
                 }.padding(8)
                 ScrollView {
-                    VStack(alignment: .leading) {
-                        ForEach(Array(workspace.diagnostics.enumerated()), id: \.offset) { _, d in
-                            Button("\(d.path):\(d.line) · \(d.message)") {
-                                workspace.open(d.path, line: d.line)
-                            }.help("打开错误位置：\(d.path):\(d.line)").buttonStyle(.link)
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(workspace.diagnosticRows.enumerated()), id: \.offset) { _, row in
+                            if let path = row["path"] as? String, let line = row["line"] as? Int {
+                                Button("\(path):\(line) · \(row["message"] as? String ?? "编译错误")") {
+                                    workspace.open(path, line: line, column: row["column"] as? Int, diagnostic: true)
+                                }
+                                    .buttonStyle(.link).help("跳转到 \(path):\(line)")
+                            } else {
+                                Text((row["text"] as? String).flatMap { $0.isEmpty ? " " : $0 } ?? " ").textSelection(.enabled)
+                            }
                         }
-                        Text(workspace.log.isEmpty ? "暂无构建日志" : workspace.log).font(
-                            .system(size: 11, design: .monospaced)
-                        ).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(10)
-                    }
+                        if workspace.log.isEmpty { Text("暂无构建日志") }
+                    }.font(.system(size: 11, design: .monospaced)).frame(maxWidth: .infinity, alignment: .leading).padding(10)
                 }.frame(height: 170)
             }
             Divider()
@@ -829,6 +842,7 @@ struct WorkspaceView: View {
         }.font(.system(size: prefs.uiSize)).tint(sage).preferredColorScheme(prefs.scheme)
             .background(SplitAutosave(id: workspace.project.id.uuidString))
             .sheet(isPresented: $workspace.showConfig) { config }
+            .sheet(isPresented: $workspace.showBibliographyDedup) { BibliographyDedupView(workspace: workspace) }
             .sheet(isPresented: $workspace.showReplacePreview) { replacementPreview }
             .alert(
                 "文档提示",
@@ -862,10 +876,18 @@ struct WorkspaceView: View {
                     workspace.search.isEmpty)
             }
             if workspace.busySearch { ProgressView() }
-            Text("\(workspace.results.count) 个匹配行（最多2000行）").font(.caption)
+            HStack {
+                Text("\(workspace.searchCurrent.map { $0 + 1 } ?? 0) / \(workspace.searchTotal)").monospacedDigit()
+                Spacer()
+                Button { workspace.stepSearch(-1) } label: { Image(systemName: "chevron.up") }.help("上一个匹配").disabled(workspace.results.isEmpty || workspace.busySearch)
+                Button { workspace.stepSearch(1) } label: { Image(systemName: "chevron.down") }.help("下一个匹配").disabled(workspace.results.isEmpty || workspace.busySearch)
+            }.font(.caption)
+            if workspace.searchTotal > workspace.results.count {
+                Text("共 \(workspace.searchTotal) 个匹配，仅展示前 2000 个；请缩小搜索范围").font(.caption2).foregroundStyle(.secondary)
+            }
             List(workspace.results) { hit in
                 Button {
-                    workspace.open(hit.path, line: hit.line)
+                    if let index = workspace.results.firstIndex(where: { $0.id == hit.id }) { workspace.selectSearchResult(index) }
                 } label: {
                     VStack(alignment: .leading) {
                         Text("\(hit.path):\(hit.line)").font(.caption).foregroundStyle(sage)

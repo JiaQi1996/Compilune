@@ -30,10 +30,10 @@ npm --prefix apps/windows run package
 Output goes to the ignored repository-root `dist/`, shared with the macOS release packages:
 
 ```text
-Compilune-0.2.13-windows-arm64-setup.exe
-Compilune-0.2.13-windows-arm64-setup.sha256
-Compilune-0.2.13-windows-x64-setup.exe
-Compilune-0.2.13-windows-x64-setup.sha256
+Compilune-0.2.18-windows-arm64-setup.exe
+Compilune-0.2.18-windows-arm64-setup.sha256
+Compilune-0.2.18-windows-x64-setup.exe
+Compilune-0.2.18-windows-x64-setup.sha256
 ```
 
 NSIS intermediates stay in ignored `.build/` folders. Root `dist/` contains only the macOS DMGs, Windows EXE installers, and their matching checksums. Installers are unsigned; publishing/signing is a separate release step. Compare each EXE's PowerShell `Get-FileHash -Algorithm SHA256` result with its matching checksum file.

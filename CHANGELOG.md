@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.2.18
+
+- Add gutter triangles and compact placeholders for nested TeX environment, display-math and multiline-group folding. Fold state follows each editor tab; search/source navigation automatically reveals folded targets. Include configurable fold/unfold and fold/unfold-all shortcuts.
+- Add smart bibliography deduplication with normalized title/author matching, duplicate-entry and citation-location previews, canonical entry selection, missing-field merges and citation/cross-reference updates. Confirmation is required; changes form one undo transaction. Conflicts require review and changed previews are rejected.
+- Opening a project now compiles it by default; add a compile-on-open setting. Successful builds synchronize the PDF beside the main TeX file without relocating the internal PDF/SyncTeX build artifacts.
+- Move the file-tree show/hide control to the left side of both workspace toolbars.
+- Synchronize macOS ARM64/Intel and Windows ARM64/x64 at 0.2.18 (macOS bundle build 19).
+
+## 0.2.17
+
+- Compiler-error links now explicitly reveal the requested file, line and optional column after restoring editor focus/viewport, with a visible source-line marker. Links display the source path and line number directly.
+- Recognize TeX line markers without a preceding exclamation, ANSI-colored diagnostics, and wrapped Unicode paths/extensions/line numbers without assuming a 79-character line. Decode compiler output incrementally so split UTF-8 bytes cannot corrupt project paths.
+- Figure/table and local includegraphics preview cards display only the image. Remove oversized headings, captions, source paths and build notes from these cards; retain bibliography metadata and concise failure messages.
+- Synchronize macOS ARM64/Intel and Windows ARM64/x64 at 0.2.17 (macOS bundle build 18).
+
+## 0.2.16
+
+- Smart bibliography insertion previews clipboard entries with title, first author, year and journal/conference before confirmation. Multiple entries, duplicate reuse and bibliography selection remain supported; cancellation leaves all files unchanged.
+
+- Completion preview cards show bibliography titles, first authors, publication years, and journals/conferences. Figure/table references render real regions from the latest successful PDF using SyncTeX; stale sources ask for recompilation.
+- Local `\includegraphics{}` path completions and hover previews show project images directly, including PDF page 1. No full-document compilation is needed for these images.
+- Display formulas support offline hover and live KaTeX previews. Unsupported/incomplete syntax is identified instead of silently rendering a different formula; the compiled PDF remains authoritative.
+- File, project, and PDF find display current/total occurrences. Project search counts and navigates to each occurrence, including multiple matches on one line; large result sets disclose display truncation.
+- Failed build logs expose clickable source errors, including file/line/column, wrapped long paths, and common `!` / `l.N` diagnostics. Successful builds automatically close the log panel.
+- macOS ARM64/Intel and Windows ARM64/x64 use version 0.2.16 (macOS bundle build 17).
+
+## 0.2.15
+
+- Fit Width now sits immediately after the zoom-in (+) button, while Search remains the rightmost PDF toolbar action.
+- Zoom percentages are relative to the current fit-width scale: Fit Width is 100%, including after resizing the preview. Manual zoom readouts are recalculated against the new viewport width.
+- macOS Fit Width always refits, including after manual/native zoom without a toolbar step change. Windows derives its fit-width baseline from PDF.js geometry and uses relative zoom limits.
+- macOS ARM64/Intel and Windows ARM64/x64 installers use version 0.2.15 (macOS bundle build 16).
+
+## 0.2.14
+
+- PDF search is the rightmost toolbar action, with Fit Width immediately to its left. Smart bibliography insertion uses a distinct quotation-bubble icon on both platforms.
+- Both PDF preview toolbars show the actual zoom percentage and current/total page count, updating on zoom, navigation, resizing and PDF replacement.
+- macOS observes PDFKit scale/document/page changes; replacing a PDF with fewer pages now selects a valid page. Narrow toolbars wrap their controls.
+- Windows moves the readouts into the preview toolbar and resets both values while clearing/loading a PDF, avoiding stale page counts or scale values.
+- macOS ARM64/Intel and Windows ARM64/x64 installers use version 0.2.14 (macOS bundle build 15).
+
 ## 0.2.13
 
 - Editor tabs retain each file's last reading viewport independently of its caret. CodeMirror scroll snapshots restore the visible text and its screen position after line-height measurement, including rapid switches, renames and edits to inactive files.

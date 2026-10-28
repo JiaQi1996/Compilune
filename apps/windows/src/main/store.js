@@ -55,6 +55,11 @@ export const defaultBindings = [
   ["math", "行内公式", "Mod-Shift-m"],
   ["displayMath", "独立公式", "Mod-Alt-Shift-m"],
   ["cite", "文献", "Mod-Shift-c"],
+  ["fold", "折叠代码块", "Mod-Shift-["],
+  ["unfold", "展开代码块", "Mod-Shift-]"],
+  ["foldAll", "折叠全部代码块", "Mod-Alt-["],
+  ["unfoldAll", "展开全部代码块", "Mod-Alt-]"],
+  ["deduplicateBibliography", "智能文献去重", "Mod-Alt-Shift-b"],
   ["pasteCitation", "插入剪贴板文献", "Mod-Shift-b"],
   ["ref", "交叉引用", "Mod-Shift-r"],
   ["image", "插入图片", "Mod-Shift-i"],
@@ -75,6 +80,7 @@ const defaults = {
   codeSize: 13,
   autoSaveEnabled: true,
   autoSaveDelay: 1,
+  compileOnOpen: true,
   compileAfterManualSave: false,
   compileAfterAutoSave: false,
   cleanAfterBuild: false,
@@ -289,6 +295,7 @@ export class Store {
     if (typeof next.texBin !== "string") throw new Error("无效的工具路径");
     for (const key of [
       "autoSaveEnabled",
+      "compileOnOpen",
       "compileAfterManualSave",
       "compileAfterAutoSave",
       "cleanAfterBuild",
@@ -304,7 +311,7 @@ export class Store {
       const key = row.key.trim();
       if (
         key &&
-        !/^(?:(?:Mod|Ctrl|Alt|Shift)-)*(?:[A-Za-z0-9/=.,;\-]|F(?:[1-9]|1[0-2])|Enter|ArrowLeft|ArrowRight)$/.test(
+        !/^(?:(?:Mod|Ctrl|Alt|Shift)-)*(?:[A-Za-z0-9/=.,;\-\[\]]|F(?:[1-9]|1[0-2])|Enter|ArrowLeft|ArrowRight)$/.test(
           key,
         )
       )

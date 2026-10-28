@@ -1,3 +1,5 @@
+import { createRequire } from "node:module";
+const { previewIndex } = createRequire(import.meta.url)("../../build/Resources/Bibliography.cjs");
 const levels = {
   part: 0,
   chapter: 1,
@@ -102,5 +104,7 @@ export function scanSymbols(source, file) {
       /@(?!comment\b|preamble\b|string\b)[\w-]+\s*[{(]\s*([^,\s]+)\s*,/gi,
     ))
       add("cite", m[1], m.index);
+  const previews = previewIndex(source, file).entries;
+  for (const symbol of out) symbol.preview = previews.find(p => p.label === symbol.label && p.kind === symbol.kind)?.preview;
   return out;
 }

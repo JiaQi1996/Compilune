@@ -1,3 +1,7 @@
+import { texFolding } from "./folding.js";
+import { foldCode, unfoldCode, foldAll, unfoldAll } from "@codemirror/language";
+import { diagnosticNavigation, revealDiagnostic } from "./diagnostic-navigation.js";
+import { configureInsights, receiveInsight, localImagePreview, imageHoverPreview, completionPreview, positionCompletionInfo, searchCounter, mathPreview, insightTheme } from "./insights.js";
 import {
   EditorState,
   Compartment,
@@ -72,6 +76,7 @@ let path = "",
   files = [],
   indexSignature = "",
   flushToken = null;
+configureInsights(post, () => path);
 const documents = new Map();
 const documentScrolls = new Map();
 // Native dictionaries do not guarantee JSON property order. Compare their
@@ -240,7 +245,7 @@ const theme = () =>
       },
       ".cm-tooltip.cm-tooltip-autocomplete": {
         borderRadius: "10px",
-        overflow: "hidden",
+        overflow: "visible",
         padding: "4px 0",
         boxShadow: dark ? "0 14px 36px #0006" : "0 12px 32px #1c302022",
       },
@@ -482,7 +487,7 @@ function completions(context) {
     if (/cite/i.test(name) || /ref$/i.test(name)) {
       const kind = /cite/i.test(name) ? "cite" : "ref";
       items = symbols.filter((symbol) => symbol.kind === kind)
-        .map((symbol) => ({ label: symbol.label, type: kind === "cite" ? "reference" : "variable", detail: symbol.path + ":" + symbol.line }));
+        .map((symbol) => ({ label: symbol.label, type: kind === "cite" ? "reference" : "variable", detail: symbol.path + ":" + symbol.line, info: () => completionPreview(symbol) }));
     } else {
       const packageNames = ["amsmath", "amssymb", "graphicx", "hyperref", "geometry", "booktabs", "xcolor", "biblatex", "natbib", "mathtools", "siunitx", "enumitem", "cleveref", "subcaption"];
       const classNames = ["article", "report", "book", "beamer", "letter", "standalone", "ctexart", "ctexrep", "ctexbook"];
@@ -492,7 +497,7 @@ function completions(context) {
       const labels = files.filter((file) => extensions[name]?.test(file)).map((file) =>
         ["include", "bibliography", "bibliographystyle", "documentclass", "usepackage"].includes(name) ? file.replace(/\.[^.]+$/, "") : file);
       labels.push(...(name === "usepackage" ? packageNames : name === "documentclass" ? classNames : name === "bibliographystyle" ? styleNames : []));
-      items = [...new Set(labels)].map((label) => ({ label, type: "file" }));
+      items = [...new Set(labels)].map((label) => ({ label, type: "file", ...(name === "includegraphics" ? { info: () => localImagePreview(label, path, true) } : {}) }));
     }
     return { from: context.pos - typed.length, options: items,
       ...(context.state.selection.main.empty ? { validFor: /[^{}\s,]*/ } : { filter: false }) };
@@ -878,6 +883,11 @@ function command(name) {
       return insertionDialog("table");
     case "link":
       return insertionDialog("link");
+    case "fold": return foldCode(view);
+    case "unfold": return unfoldCode(view);
+    case "foldAll": return foldAll(view);
+    case "unfoldAll": return unfoldAll(view);
+    case "deduplicateBibliography": if (view.composing) { notice("请先完成当前输入"); return true; } changeReport(); post({ type: "deduplicateBibliography" }); return true;
     case "find":
       return openSearchPanel(view);
     case "replace":
@@ -938,6 +948,11 @@ function command(name) {
   }
 }
 const fallback = [
+  [hostPlatform === "darwin" ? "Mod-Alt-[" : "Mod-Shift-[", "fold"],
+  [hostPlatform === "darwin" ? "Mod-Alt-]" : "Mod-Shift-]", "unfold"],
+  [hostPlatform === "darwin" ? "Mod-Alt-Shift-[" : "Mod-Alt-[", "foldAll"],
+  [hostPlatform === "darwin" ? "Mod-Alt-Shift-]" : "Mod-Alt-]", "unfoldAll"],
+  ["Mod-Alt-Shift-b", "deduplicateBibliography"],
   ["Mod-z", "undo"],
   ["Mod-Shift-z", "redo"],
   ["Mod-b", "bold"],
@@ -1009,6 +1024,7 @@ const extensions = [
     go: "跳转",
   }),
   lineNumbers(),
+  texFolding,
   highlightActiveLineGutter(),
   highlightActiveLine(),
   drawSelection(),
@@ -1031,8 +1047,10 @@ const extensions = [
   StreamLanguage.define(stex),
   syntaxHighlighting(defaultHighlightStyle),
   search({ top: true }),
+  searchCounter, mathPreview, imageHoverPreview, insightTheme, diagnosticNavigation,
   autocompletion({
     override: [completions],
+    positionInfo: positionCompletionInfo,
     activateOnTyping: true,
     interactionDelay: 0,
   }),
@@ -1108,7 +1126,7 @@ window.folio = {
           view.setState(existing || EditorState.create({ doc: message.text, extensions }));
         view.dispatch({ effects: style.reconfigure(theme()) });
         configureBindings();
-        if (message.line) {
+        if (message.line && !message.diagnostic) {
           const line = view.state.doc.line(
             Math.max(1, Math.min(message.line, view.state.doc.lines)),
           );
@@ -1153,7 +1171,19 @@ window.folio = {
         view.lineBlockAtHeight(view.scrollDOM.scrollTop);
         documents.set(path, view.state);
         restoring = false;
+        // Run explicit diagnostics after restoring/focusing the document so a
+        // saved reading viewport cannot supersede the requested error location.
+        if (message.diagnostic && message.line) revealDiagnostic(view, message.line, message.column);
         reportPosition();
+        break;
+      }
+      case "referencePreview": receiveInsight(message); break;
+      case "selectMatch": {
+        if (message.path !== path || !Number.isInteger(message.from) || !Number.isInteger(message.to) ||
+          message.from < 0 || message.to > view.state.doc.length || message.to < message.from ||
+          view.state.sliceDoc(message.from, message.to) !== message.text) break;
+        focusEditor();
+        view.dispatch({ selection: EditorSelection.single(message.from, message.to), scrollIntoView: true });
         break;
       }
       case "replaceDocument": {

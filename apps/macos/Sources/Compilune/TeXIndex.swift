@@ -8,10 +8,11 @@ struct SourceSymbol: Codable {
     var offset: Int
     var detail: String = ""
     var arguments: Int = 0
+    var preview: [String: String] = [:]
     var dictionary: [String: Any] {
         [
             "label": label, "path": path, "line": line, "kind": kind, "offset": offset, "detail": detail,
-            "arguments": arguments,
+            "arguments": arguments, "preview": preview,
         ]
     }
 }

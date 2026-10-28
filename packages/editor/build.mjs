@@ -28,12 +28,15 @@ const result = await build({
 });
 await build({
   absWorkingDir: editorRoot,
-  entryPoints: ["bibliography.js"],
+  entryPoints: ["bibliography-host.js"],
   bundle: true,
   format: "cjs",
   outfile: path.join(resourceRoot, "Bibliography.cjs"),
   target: "es2020",
 });
+
+await cp(path.join(editorRoot, "node_modules/katex/dist/katex.min.css"), path.join(resourceRoot, "Editor/katex.min.css"));
+await cp(path.join(editorRoot, "node_modules/katex/dist/fonts"), path.join(resourceRoot, "Editor/fonts"), { recursive: true });
 
 // Keep notices aligned with packages actually included in the editor bundle.
 const packages = new Set();

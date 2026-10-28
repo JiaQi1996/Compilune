@@ -97,24 +97,12 @@ struct PDFToolbar: View {
     @ViewFocus var searching: Bool
     var body: some View {
         VStack(spacing: 5) {
-            HStack {
-                Text("PDF").bold()
-                Button("−") { workspace.pdfZoom -= 1 }.help("缩小 PDF，代码与界面字号保持不变")
-                Button("+") { workspace.pdfZoom += 1 }.help("放大 PDF，代码与界面字号保持不变")
-                Button("适宽") { workspace.pdfZoom = 0 }.help("让 PDF 自动适应预览区域宽度")
-                Spacer()
-                TextField("页", value: $workspace.pdfPage, format: .number).frame(width: 40)
-                Text("页").foregroundStyle(.secondary)
-                Button {
-                    workspace.pdfSearchVisible.toggle()
-                    searching = workspace.pdfSearchVisible
-                    if !workspace.pdfSearchVisible { workspace.pdfQuery = "" }
-                } label: {
-                    Image(systemName: "magnifyingglass")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { zoomControls; Spacer(minLength: 8); pageControls }
+                VStack(alignment: .leading, spacing: 6) {
+                    zoomControls
+                    HStack { Spacer(minLength: 0); pageControls }
                 }
-                .help(workspace.pdfSearchVisible ? "收起 PDF 查找栏" : "展开 PDF 查找栏")
-                Button("定位") { workspace.send?(["type": "command", "name": "forwardSync"]) }.help(
-                    prefs.commandHint("forwardSync", "把源码光标所在行定位到 PDF"))
             }
             if workspace.pdfSearchVisible {
                 HStack {
@@ -151,6 +139,50 @@ struct PDFToolbar: View {
             of: workspace.pdfZoom
         ) { _, _ in workspace.persistSessionSoon() }
     }
+    private var zoomControls: some View {
+        HStack(spacing: 6) {
+            Text("PDF").bold()
+            HStack(spacing: 2) {
+                Button("−") { workspace.pdfZoom -= 1 }.help("缩小 PDF，代码与界面字号保持不变")
+                Text(workspace.pdfPageCount > 0 && workspace.pdfScalePercent > 0 ? "\(workspace.pdfScalePercent)%" : "—")
+                    .monospacedDigit().foregroundStyle(.secondary).frame(minWidth: 34)
+                    .help("相对于当前预览宽度的缩放比例，适宽为 100%")
+                    .accessibilityIdentifier("pdf-scale")
+                Button("+") { workspace.pdfZoom += 1 }.help("放大 PDF，代码与界面字号保持不变")
+                Button("适宽") {
+                    workspace.pdfZoom = 0
+                    workspace.pdfFitRequest = UUID()
+                }
+                .help("适应预览区域宽度，恢复到 100%").padding(.leading, 4)
+                .accessibilityIdentifier("pdf-fit")
+            }
+        }.disabled(workspace.pdfPageCount == 0)
+    }
+    private var pageControls: some View {
+        HStack(spacing: 6) {
+            if workspace.pdfPageCount > 0 {
+                TextField("页", value: $workspace.pdfPage, format: .number).frame(width: 40)
+                    .help("输入 PDF 页码跳转")
+            } else {
+                Text("—").frame(width: 40).foregroundStyle(.secondary)
+            }
+            Text("/ \(workspace.pdfPageCount > 0 ? String(workspace.pdfPageCount) : "—") 页")
+                .monospacedDigit().foregroundStyle(.secondary)
+                .help("PDF 当前页 / 总页数")
+            Button("定位") { workspace.send?(["type": "command", "name": "forwardSync"]) }.help(
+                prefs.commandHint("forwardSync", "把源码光标所在行定位到 PDF"))
+            Button {
+                workspace.pdfSearchVisible.toggle()
+                searching = workspace.pdfSearchVisible
+                if !workspace.pdfSearchVisible { workspace.pdfQuery = "" }
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .help(workspace.pdfSearchVisible ? "收起 PDF 查找栏" : "展开 PDF 查找栏")
+            .accessibilityIdentifier("pdf-find")
+        }
+    }
+
 }
 struct ProjectCover: View {
     let project: Project
@@ -229,6 +261,7 @@ struct SettingsView: View {
                         Stepper("保存等待时间", value: $prefs.autoSaveDelay, in: 1...30, step: 1).labelsHidden()
                             .disabled(!prefs.autoSaveEnabled).help("设置自动保存等待时间，范围为 1 至 30 秒")
                     }
+                    Toggle("打开项目后自动编译", isOn: $prefs.compileOnOpen).help("打开项目后保存并编译当前文稿；成功生成的 PDF 同步到主 TeX 文件所在目录")
                     Toggle("保存后自动编译", isOn: $prefs.compileAfterManualSave).help(
                         "使用 ⌘S 或菜单保存成功后自动编译，不依赖自动保存开关")
                     Toggle("自动保存后自动编译", isOn: $prefs.compileAfterAutoSave).disabled(!prefs.autoSaveEnabled)

@@ -61,6 +61,15 @@ struct EditorHost: NSViewRepresentable {
                 send(options)
                 if let path = workspace.selected { workspace.open(path) }
                 workspace.refreshIndex()
+                if !workspace.didCompileOnOpen {
+                    workspace.didCompileOnOpen = true
+                    if Preferences.shared.compileOnOpen && !workspace.project.root.isEmpty {
+                        Task { @MainActor [weak workspace] in
+                            guard let workspace, workspace.editorReady, !workspace.closingForNavigation else { return }
+                            workspace.compile()
+                        }
+                    }
+                }
             case "change":
                 if let path = body["path"] as? String, let text = body["text"] as? String {
                     workspace.changed(
@@ -84,12 +93,15 @@ struct EditorHost: NSViewRepresentable {
             case "undo": workspace.undoEdit()
             case "redo": workspace.redoEdit()
             case "insertImage": workspace.insertImage()
+            case "deduplicateBibliography": workspace.prepareBibliographyDedup()
             case "pasteCitation": workspace.insertClipboardCitation(body)
             case "notice": workspace.status = body["message"] as? String ?? ""
             case "save":
                 workspace.saveManually()
                 workspace.refreshIndex()
             case "requestIndex": workspace.refreshIndex()
+            case "localImagePreview": workspace.localImagePreview(body)
+            case "referencePreview": workspace.referencePreview(body)
             case "compile": workspace.compile()
             case "projectSearch": workspace.showSearch = true
             case "forwardSync": workspace.forwardSync(line: body["line"] as? Int ?? 1)
@@ -133,16 +145,19 @@ struct PDFHost: NSViewRepresentable {
     var location: PDFLocation?
     var query: String
     var zoomStep: Int
+    var fitRequest: UUID
     var requestedPage: Int
     var searchStep: Int
     var onSearchUpdate: (Int, Int) -> Void
     var onPageChanged: (Int) -> Void
+    var onMetricsChanged: (Int, Int) -> Void
     var onCommandClick: (Int, Double, Double) -> Void
     func makeNSView(context: Context) -> CompilunePDFView {
         let v = CompilunePDFView()
         v.autoScales = true
         v.displayMode = .singlePageContinuous
         v.backgroundColor = NSColor.windowBackgroundColor
+        v.postsFrameChangedNotifications = true
         context.coordinator.attach(v)
         return v
     }
@@ -150,19 +165,27 @@ struct PDFHost: NSViewRepresentable {
         let c = context.coordinator
         view.onCommandClick = onCommandClick
         c.pageChanged = onPageChanged
+        c.metricsChanged = onMetricsChanged
         if c.data != data {
             let page = view.currentPage.flatMap { view.document?.index(for: $0) }
             let scale = view.scaleFactor
+            let wasAutoScaled = view.autoScales
             c.data = data
             view.document = PDFDocument(data: data)
             c.query = "\0"
-            if let page, let target = view.document?.page(at: page) {
+            c.reportedPage = nil
+            if let document = view.document, document.pageCount > 0,
+                let target = document.page(at: min(max(0, page ?? requestedPage - 1), document.pageCount - 1))
+            {
                 view.go(to: target)
-                view.scaleFactor = scale
+                if !wasAutoScaled { view.scaleFactor = scale }
             }
         }
-        if c.zoomStep != zoomStep {
+        let fitRequested = c.fitRequest != fitRequest
+        c.fitRequest = fitRequest
+        if c.zoomStep != zoomStep || (fitRequested && zoomStep == 0) {
             if zoomStep == 0 {
+                view.autoScales = false
                 view.autoScales = true
             } else if zoomStep > c.zoomStep {
                 for _ in 0..<min(30, zoomStep - c.zoomStep) { view.zoomIn(nil) }
@@ -207,6 +230,7 @@ struct PDFHost: NSViewRepresentable {
             let bounds = page.pageRef?.getBoxRect(.mediaBox) ?? page.bounds(for: .mediaBox)
             view.go(to: PDFDestination(page: page, at: NSPoint(x: location.x, y: bounds.maxY - location.y)))
         }
+        c.publishMetrics(view)
     }
     func makeCoordinator() -> Coordinator { Coordinator() }
     class Coordinator {
@@ -214,22 +238,55 @@ struct PDFHost: NSViewRepresentable {
         var location: UUID?
         var query = ""
         var zoomStep = 0
+        var fitRequest: UUID?
         var requestedPage = 1
         var searchStep = 0
         var matchIndex = 0
         var matches: [PDFSelection] = []
         var lastSelection: PDFSelection?
-        var observer: NSObjectProtocol?
+        var observers: [NSObjectProtocol] = []
         var pageChanged: ((Int) -> Void)?
+        var metricsChanged: ((Int, Int) -> Void)?
+        var reportedPage: Int?
+        var reportedMetrics: (count: Int, percent: Int)?
         func attach(_ view: PDFView) {
-            observer = NotificationCenter.default.addObserver(
-                forName: .PDFViewPageChanged, object: view, queue: .main
-            ) { [weak self, weak view] _ in
-                guard let view, let page = view.currentPage, let index = view.document?.index(for: page)
-                else { return }
-                DispatchQueue.main.async { self?.pageChanged?(index + 1) }
+            for name in [Notification.Name.PDFViewPageChanged, .PDFViewScaleChanged, .PDFViewDocumentChanged, NSView.frameDidChangeNotification] {
+                observers.append(NotificationCenter.default.addObserver(
+                    forName: name, object: view, queue: .main
+                ) { [weak self, weak view] _ in
+                    guard let view else { return }
+                    self?.publishMetrics(view)
+                })
             }
         }
-        deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
+        func publishMetrics(_ view: PDFView) {
+            // PDFKit also emits these notifications during SwiftUI updates.
+            // Publish only changed values on the next main-loop turn.
+            DispatchQueue.main.async { [weak self, weak view] in
+                guard let self, let view else { return }
+                let count = view.document?.pageCount ?? 0
+                let scale = view.scaleFactor
+                // In continuous mode PDFKit defines this as its fit-width
+                // scale, independently of the current manual zoom.
+                let fit = view.scaleFactorForSizeToFit
+                let percent = count > 0 && scale.isFinite && scale > 0 && fit.isFinite && fit > 0
+                    ? Int((scale / fit * 100).rounded()) : 0
+                if self.reportedMetrics?.count != count || self.reportedMetrics?.percent != percent {
+                    self.reportedMetrics = (count, percent)
+                    self.metricsChanged?(count, percent)
+                }
+                if let page = view.currentPage, let index = view.document?.index(for: page), index != NSNotFound {
+                    let number = index + 1
+                    // Scrolling must update the page readout without issuing a
+                    // second go(to:) that snaps the PDF back to the page top.
+                    self.requestedPage = number
+                    if self.reportedPage != number {
+                        self.reportedPage = number
+                        self.pageChanged?(number)
+                    }
+                }
+            }
+        }
+        deinit { for observer in observers { NotificationCenter.default.removeObserver(observer) } }
     }
 }

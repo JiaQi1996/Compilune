@@ -260,6 +260,7 @@ function updateWorkspace(ws) {
   state.ws = ws;
   const projectChanged = previous?.project.id !== ws.project.id;
   if (projectChanged) restoreNavigation(ws);
+  else if (previous?.revision !== ws.revision) state.refreshSearch?.();
   $("#library").hidden = state.view !== "library";
   $("#workspace").hidden = state.view !== "workspace";
   $("#window-title").textContent =
@@ -796,67 +797,116 @@ async function openConfiguration() {
   };
   dialog.showModal();
 }
+async function openBibliographyDuplicates() {
+  if (!state.ws) return;
+  const projectId=state.ws.project.id;
+  const report=await request("bibliographyDuplicates");
+  if (projectId!==state.ws?.project.id) return;
+  if (!report.groups.length) { notify(`已检查 ${report.entryCount} 条文献，未发现题目和作者相同的重复条目`); return; }
+  const dialog=document.createElement("dialog");dialog.className="prompt-dialog bibliography-dedup-dialog";
+  dialog.innerHTML=`<header class="dialog-header"><div><h2>智能文献去重</h2><p>按题目和作者检查。选择保留条目，合并缺失字段并更新正文引用；一次撤销可还原全部修改。</p></div><button class="icon-button dedup-cancel" title="取消去重">×</button></header><div class="form-body">${report.groups.map((group,index)=>`<article class="citation-preview-card dedup-group" data-index="${index}"><label class="dedup-title"><input type="checkbox" data-selected ${group.blocked?'disabled':group.warnings.length?'':'checked'} title="合并这一组重复文献"><strong>${esc(group.title)}</strong></label><p class="section-note">${esc(group.author)}</p><div class="dedup-entry-list">${group.entries.map(entry=>`<div><code>${esc(entry.key)}</code><span>${esc(entry.path)}:${entry.line}</span></div>`).join('')}</div>${group.warnings.map(w=>`<p class="dedup-warning">${esc(w)}</p>`).join('')}${group.blocked?`<p class="form-error">${esc(group.blocked)}</p>`:''}<label class="field"><span>保留条目</span><select data-keep title="选择保留的引用键与 Bib 文件">${group.entries.map(entry=>`<option value="${esc(entry.id)}" ${entry.id===group.keep?'selected':''}>${esc(entry.key)} — ${esc(entry.path)}:${entry.line}（${entry.fieldCount} 个字段）</option>`).join('')}</select></label>${new Set(group.entries.map(e=>e.path)).size>1?'<p class="section-note">请确认正文已加载所选条目所在的 Bib 文件。</p>':''}<details ${group.references.length<=8?'open':''}><summary title="查看重复条目在正文的引用位置">引用位置（${group.references.length} 处）</summary><div class="dedup-references">${group.references.map((ref,refIndex)=>`<button type="button" class="dedup-reference" data-reference="${refIndex}" title="跳转到这处引用">${esc(ref.path)}:${ref.line}  \\${esc(ref.command)}{${esc(ref.keys.join(','))}}</button>`).join('')}</div></details><details><summary title="查看这些条目的完整 BibTeX">查看原始条目</summary>${group.entries.map(entry=>`<pre class="dedup-source">${esc(entry.raw)}</pre>`).join('')}</details></article>`).join('')}<p class="form-error dedup-error" role="alert" hidden></p></div><footer class="dialog-footer"><button class="button secondary dedup-cancel" title="取消，不修改任何文件">取消</button><button class="button primary dedup-apply" title="去重所选文献并自动修改引用">确认去重</button></footer>`;
+  document.body.append(dialog);
+  for (const button of dialog.querySelectorAll('.dedup-cancel')) button.onclick=()=>dialog.close();
+  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+  const apply=dialog.querySelector('.dedup-apply');
+  const selected=()=>[...dialog.querySelectorAll('.dedup-group')].filter(row=>row.querySelector('[data-selected]').checked).map(row=>({id:report.groups[Number(row.dataset.index)].id,keep:row.querySelector('[data-keep]').value}));
+  const update=()=>{const count=selected().length;apply.disabled=!count;apply.textContent=`确认去重（${count} 组）`;};
+  dialog.onchange=update;update();
+  for (const row of dialog.querySelectorAll('.dedup-group')) for (const button of row.querySelectorAll('[data-reference]')) button.onclick=()=>attempt(()=>{
+    const reference=report.groups[Number(row.dataset.index)].references[Number(button.dataset.reference)];
+    return request('openFile',{path:reference.path,line:reference.line});
+  });
+  apply.onclick=async()=>{
+    apply.disabled=true;
+    try {
+      if(projectId!==state.ws?.project.id)throw Error('项目已切换，请重新检查');
+      const result=await request('applyBibliographyDuplicates',{token:report.token,choices:selected()});
+      dialog.close();notify(`已去重 ${result.removed} 条文献并更新引用，可整体撤销`);
+    } catch(error) {const target=dialog.querySelector('.dedup-error');target.hidden=false;target.textContent=error.message;update();}
+  };
+  dialog.showModal();
+}
+
 async function openSearch() {
   if (!state.ws) return;
-  const dialog = $("#search-dialog");
-  dialog.innerHTML = `<header class="dialog-header"><div><h2>项目搜索与替换</h2><p>普通文本搜索，忽略大小写。应用替换前先查看预览。</p></div><button class="icon-button dialog-close" title="关闭项目搜索">×</button></header><div class="form-body"><div class="search-inputs"><input id="project-query" placeholder="查找内容" aria-label="项目查找内容"><button id="run-search" class="button secondary" title="搜索项目文本">搜索</button></div><div class="search-inputs"><input id="project-replacement" placeholder="替换为…" aria-label="项目替换内容"><button id="preview-replace" class="button secondary" title="预览所有替换">预览替换</button></div><p id="search-summary" class="section-note">结果最多显示 2,000 个匹配行。</p><div id="project-results" class="search-results"></div></div><footer class="dialog-footer"><button class="button secondary dialog-close" title="关闭项目搜索">关闭</button><button id="apply-replace" class="button primary" disabled title="应用预览中的替换，可撤销">应用全部替换</button></footer>`;
+  const dialog = $("#search-dialog"), projectId = state.ws.project.id;
+  const previous = state.projectSearch?.projectId === projectId ? state.projectSearch : null;
+  const session = state.projectSearch = { projectId, query: previous?.query || "", replacement: previous?.replacement || "", hits: [], total: 0, current: null };
+  dialog.innerHTML = `<header class="dialog-header"><div><h2>项目搜索与替换</h2><p>普通文本搜索，忽略大小写。应用替换前先查看预览。</p></div><button class="icon-button dialog-close" title="关闭项目搜索">×</button></header><div class="form-body"><div class="search-inputs"><input id="project-query" placeholder="查找内容" aria-label="项目查找内容"><button id="run-search" class="button secondary" title="搜索项目文本">搜索</button></div><div class="search-inputs"><input id="project-replacement" placeholder="替换为…" aria-label="项目替换内容"><button id="preview-replace" class="button secondary" title="预览所有替换">预览替换</button></div><div class="search-navigation"><span id="project-match-count" role="status" aria-live="polite">0 / 0</span><button id="project-prev" class="icon-button" title="上一个匹配（Shift+Enter）">↑</button><button id="project-next" class="icon-button" title="下一个匹配（Enter）">↓</button></div><p id="search-summary" class="section-note">当前匹配 / 全部匹配</p><div id="project-results" class="search-results"></div></div><footer class="dialog-footer"><button class="button secondary dialog-close" title="关闭项目搜索">关闭</button><button id="apply-replace" class="button primary" disabled title="应用预览中的替换，可撤销">应用全部替换</button></footer>`;
+  $("#project-query").value = session.query; $("#project-replacement").value = session.replacement;
   state.replacePlan = [];
-  for (const button of dialog.querySelectorAll(".dialog-close"))
-    button.onclick = () => dialog.close();
-  const search = async (previewMode) => {
-    const query = $("#project-query").value;
-    if (!query) return;
-    const result = await request("search", {
-      query,
-      ...(previewMode ? { replacement: $("#project-replacement").value } : {}),
-    });
+  let generation = 0, timer, previewing = false, busy = false;
+  const updateCount = () => {
+    $("#project-match-count").textContent = `${session.current == null ? 0 : session.current + 1} / ${session.total}`;
+    $("#project-prev").disabled = busy || !session.hits.length || (session.total > session.hits.length && session.current === 0);
+    $("#project-next").disabled = busy || !session.hits.length || (session.total > session.hits.length && session.current === session.hits.length - 1);
+    for (const [i, row] of [...$("#project-results").children].entries()) row.classList.toggle("selected", i === session.current);
+  };
+  const select = async index => {
+    const hit = session.hits[index]; if (!hit) return;
+    await request("openFile", hit);
+    if (projectId !== state.ws?.project.id) return;
+    session.current = index; updateCount();
+    $("#project-results").children[index]?.scrollIntoView({ block: "nearest" });
+  };
+  const step = delta => {
+    if (!session.hits.length || busy) return;
+    let index = session.current == null ? (delta > 0 ? 0 : session.hits.length - 1) : session.current + delta;
+    if (session.total > session.hits.length) index = Math.min(session.hits.length - 1, Math.max(0, index));
+    else index = (index + session.hits.length) % session.hits.length;
+    return select(index);
+  };
+  const search = async previewMode => {
+    clearTimeout(timer);
+    const token = ++generation, query = $("#project-query").value;
+    session.query = query; session.replacement = $("#project-replacement").value;
+    session.current = null; session.hits = []; session.total = 0; state.replacePlan = [];
+    previewing = previewMode; busy = !!query; updateCount();
+    $("#project-results").replaceChildren(); $("#apply-replace").disabled = true;
+    if (!query) { busy = false; $("#search-summary").textContent = "当前匹配 / 全部匹配"; return; }
+    $("#search-summary").textContent = "正在搜索…";
+    let result;
+    try { result = await request("search", { query, ...(previewMode ? { replacement: session.replacement } : {}) }); }
+    catch (error) { if (token === generation) { busy = false; updateCount(); $("#search-summary").textContent = error.message; } return; }
+    if (token !== generation || projectId !== state.ws?.project.id || !dialog.open) return;
+    busy = false; session.hits = result.hits; session.total = result.total;
     state.replacePlan = previewMode ? result.plan : [];
     $("#apply-replace").disabled = !state.replacePlan.length;
-    $("#search-summary").textContent = previewMode
-      ? `将修改 ${result.plan.length} 个文件；应用后可用 Ctrl+Z 整体撤销。`
-      : `找到 ${result.hits.length} 个匹配行`;
-    const target = $("#project-results");
-    target.replaceChildren();
-    if (previewMode) {
-      for (const item of result.plan) {
-        const element = document.createElement("div");
-        element.className = "replace-preview";
-        element.innerHTML = `<b>${esc(item.path)}</b><pre>${esc(item.after.slice(0, 2000))}</pre>`;
-        target.append(element);
-      }
-    } else
-      for (const hit of result.hits) {
-        const row = document.createElement("button");
-        row.className = "search-hit";
-        row.title = `跳转 ${hit.path}:${hit.line}`;
-        row.innerHTML = `<b>${esc(hit.path)}:${hit.line}</b><p>${esc(hit.text)}</p>`;
-        row.onclick = () => {
-          dialog.close();
-          attempt(() =>
-            request("openFile", { path: hit.path, line: hit.line }),
-          );
-        };
-        target.append(row);
-      }
+    $("#search-summary").textContent = previewMode ? `将修改 ${result.plan.length} 个文件；应用后可整体撤销。` : result.truncated ? `共 ${result.total} 个匹配，仅展示前 2,000 个；请缩小搜索范围。` : `共 ${result.total} 个匹配`;
+    const target = $("#project-results"); target.replaceChildren();
+    if (previewMode) for (const item of result.plan) {
+      const element = document.createElement("div"); element.className = "replace-preview";
+      element.innerHTML = `<b>${esc(item.path)}</b><pre>${esc(item.after.slice(0, 2000))}</pre>`; target.append(element);
+    } else for (const [index, hit] of result.hits.entries()) {
+      const row = document.createElement("button"); row.className = "search-hit"; row.title = `跳转 ${hit.path}:${hit.line}`;
+      row.innerHTML = `<b>${esc(hit.path)}:${hit.line}</b><p>${esc(hit.text)}</p>`;
+      row.onclick = () => attempt(() => select(index)); target.append(row);
+    }
+    updateCount();
+    if (previewMode) { $("#project-prev").disabled = true; $("#project-next").disabled = true; }
   };
+  state.refreshSearch = () => {
+    if (!dialog.open || projectId !== state.ws?.project.id) return;
+    ++generation; clearTimeout(timer); session.current = null; session.hits = []; session.total = 0; busy = true;
+    state.replacePlan = []; $("#apply-replace").disabled = true; updateCount();
+    timer = setTimeout(() => attempt(() => search(false)), 220);
+  };
+  for (const button of dialog.querySelectorAll(".dialog-close")) button.onclick = () => dialog.close();
+  dialog.onclose = () => { ++generation; clearTimeout(timer); state.refreshSearch = null; };
   $("#run-search").onclick = () => attempt(() => search(false));
   $("#preview-replace").onclick = () => attempt(() => search(true));
-  $("#project-query").onkeydown = (event) => {
-    if (event.key === "Enter") attempt(() => search(false));
+  $("#project-prev").onclick = () => attempt(() => step(-1));
+  $("#project-next").onclick = () => attempt(() => step(1));
+  $("#project-query").onkeydown = event => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    attempt(async () => { if (busy || previewing || session.query !== $("#project-query").value) await search(false); await step(event.shiftKey ? -1 : 1); });
   };
-  for (const field of [$("#project-query"), $("#project-replacement")])
-    field.oninput = () => {
-      state.replacePlan = [];
-      $("#apply-replace").disabled = true;
-    };
-  $("#apply-replace").onclick = () =>
-    attempt(async () => {
-      await request("replaceProject", { plan: state.replacePlan });
-      dialog.close();
-      notify("项目替换已应用，可用 Ctrl+Z 撤销");
-    });
-  dialog.showModal();
-  $("#project-query").focus();
+  $("#project-query").oninput = state.refreshSearch;
+  $("#project-replacement").oninput = () => { session.replacement = $("#project-replacement").value; state.replacePlan = []; $("#apply-replace").disabled = true; if (previewing) state.refreshSearch(); };
+  $("#apply-replace").onclick = () => attempt(async () => { await request("replaceProject", { plan: state.replacePlan }); await search(false); notify("项目替换已应用，可用 Ctrl+Z 撤销"); });
+  dialog.showModal(); updateCount(); $("#project-query").focus();
+  if (session.query) await search(false);
 }
 function displayShortcut(key) {
   return key
@@ -948,7 +998,7 @@ async function renderSettings() {
       button.onclick = () =>
         attempt(() => changeSetting({ theme: button.dataset.theme }));
   } else if (tab === "saving") {
-    target.innerHTML = `<h3>保存与编译</h3><p class="section-note">自动编译在成功保存后触发，构建中最多排队下一次。</p><div class="setting-group">${settingRow("自动保存", "停止输入后将修改保存到本地文件。", switchControl("autoSaveEnabled", "自动保存"))}${settingRow("等待时间", "1–30 秒。恢复快照独立于自动保存。", `<input type="number" data-number="autoSaveDelay" min="1" max="30" value="${prefs.autoSaveDelay}" ${prefs.autoSaveEnabled ? "" : "disabled"} title="自动保存等待秒数">`)}${settingRow("保存后自动编译", "对应 Ctrl+S，不依赖自动保存开关。", switchControl("compileAfterManualSave", "保存后自动编译"))}${settingRow("自动保存后自动编译", prefs.autoSaveEnabled ? "对所有项目生效。" : "不可用：需先开启自动保存。", switchControl("compileAfterAutoSave", "自动保存后自动编译", !prefs.autoSaveEnabled))}</div><h3>编译过程文件</h3><div class="setting-group">${settingRow("成功编译后清理", "保留 PDF、SyncTeX 与源文件；失败时保留诊断文件。", switchControl("cleanAfterBuild", "成功编译后清理辅助文件"))}</div>`;
+    target.innerHTML = `<h3>保存与编译</h3><p class="section-note">自动编译在成功保存后触发，构建中最多排队下一次。</p><div class="setting-group">${settingRow("自动保存", "停止输入后将修改保存到本地文件。", switchControl("autoSaveEnabled", "自动保存"))}${settingRow("等待时间", "1–30 秒。恢复快照独立于自动保存。", `<input type="number" data-number="autoSaveDelay" min="1" max="30" value="${prefs.autoSaveDelay}" ${prefs.autoSaveEnabled ? "" : "disabled"} title="自动保存等待秒数">`)}${settingRow("打开项目后自动编译", "打开项目后保存并编译当前文稿。成功生成的 PDF 同步到主 TeX 文件所在目录。", switchControl("compileOnOpen", "打开项目后自动编译"))}${settingRow("保存后自动编译", "对应 Ctrl+S，不依赖自动保存开关。", switchControl("compileAfterManualSave", "保存后自动编译"))}${settingRow("自动保存后自动编译", prefs.autoSaveEnabled ? "对所有项目生效。" : "不可用：需先开启自动保存。", switchControl("compileAfterAutoSave", "自动保存后自动编译", !prefs.autoSaveEnabled))}</div><h3>编译过程文件</h3><div class="setting-group">${settingRow("成功编译后清理", "保留 PDF、SyncTeX 与源文件；失败时保留诊断文件。", switchControl("cleanAfterBuild", "成功编译后清理辅助文件"))}</div>`;
   } else if (tab === "tools") {
     target.innerHTML = `<h3>TeX 工具链</h3><p class="section-note">选择一种环境即可。推荐 TeX Live，也可使用 MiKTeX；安装后自动检测，或手动选择可执行目录。</p><div class="tool-path">${esc(prefs.texBin || "尚未检测到 TeX 可执行目录")}</div><div class="settings-actions"><button id="detect-tools" class="button primary" title="自动查找 TeX Live、MiKTeX 和 PATH 中的工具">${icon("refresh", 16)}自动检测</button><button id="choose-bin" class="button secondary" title="选择包含 latexmk 和 LaTeX 引擎的可执行目录">选择目录</button></div><div id="tool-results">${
       Object.entries(state.tools?.tools || {})
@@ -1097,6 +1147,26 @@ async function editorEvent(message, capturedProjectId = state.ws?.project.id) {
     case "requestIndex":
       if (projectId) await request("requestIndex");
       break;
+    case "localImagePreview": {
+      let result;
+      try {
+        if (projectId !== state.ws?.project.id) break;
+        result = await request("localImagePreview", message);
+        if (result.pdf) result = { image: await preview.localImage(result.pdf), note: result.note };
+      } catch (error) { result = { error: error.message }; }
+      if (projectId === state.ws?.project.id) sendEditor({ type: "referencePreview", id: message.id, ...result });
+      break;
+    }
+    case "referencePreview": {
+      let result;
+      try {
+        if (projectId !== state.ws?.project.id) break;
+        const descriptor = await request("referencePreview", message);
+        result = { image: await preview.referenceImage(descriptor.locations), note: descriptor.note };
+      } catch (error) { result = { error: error.message }; }
+      if (projectId === state.ws?.project.id) sendEditor({ type: "referencePreview", id: message.id, ...result });
+      break;
+    }
     case "navigate":
       if (projectId) await request("openFile", message);
       break;
@@ -1116,22 +1186,20 @@ async function editorEvent(message, capturedProjectId = state.ws?.project.id) {
     case "forwardSync":
       if (projectId) await request("forwardSync", { line: message.line });
       break;
+    case "deduplicateBibliography": if (projectId) await openBibliographyDuplicates(); break;
     case "pasteCitation": {
       if (!projectId || projectId !== state.ws?.project.id) break;
       const info = await request("citationClipboard", { ...message, projectId });
-      if (info.existingKeys.length) {
-        const detail = "项目中已存在以下文献键：" + info.existingKeys.join(", ") + "。" +
-          (info.newKeys.length ? "已有文献不再追加；新文献将追加到所选 .bib，并在光标处插入全部引用。" : "是否仅在光标处插入引用？不会修改任何 .bib 文件。");
-        const confirmation = await promptForm("文献已存在", detail, "", info.newKeys.length ? "复用已有文献并插入" : "仅插入引用");
-        if (!confirmation) break;
-      }
+      const detail = info.existingKeys.length
+        ? "项目中已存在以下文献键：" + info.existingKeys.join(", ") + "。" + (info.newKeys.length ? "已有文献不再追加；新文献将追加到所选 .bib，并在光标处插入全部引用。" : "确认后仅在光标处插入引用，不修改 .bib。")
+        : "确认文献信息后，追加到文献文件并在原光标处插入引用。";
       let target = info.defaultFile || (info.files.length === 1 ? info.files[0] : "");
-      if (info.newKeys.length && !target) {
-        const choice = await promptForm("选择文献文件", "文献将追加到所选 .bib 的底部。可在项目配置中设置默认文件。",
-          `<label class="field"><span>文献文件</span><select name="file" title="选择要追加文献的 .bib 文件">${info.files.map((file) => `<option value="${esc(file)}">${esc(file)}</option>`).join("")}</select></label>`, "插入");
-        if (!choice) break;
-        target = choice.file;
-      }
+      const cards = `<div class="citation-preview-list">${info.entries.map(entry => `<article class="citation-preview-card"><div class="citation-preview-key">${esc(entry.key)}${info.existingKeys.includes(entry.key) ? ' · 已存在，将复用' : ''}</div><h3>${esc(entry.title || "标题未提供")}</h3><dl>${[["第一作者", entry.author], ["发表年份", entry.year], ["期刊 / 会议", entry.venue]].map(([name,value]) => `<dt>${name}</dt><dd>${esc(value || "未提供")}</dd>`).join("")}</dl></article>`).join("")}</div>`;
+      const selector = info.newKeys.length && !target ? `<label class="field"><span>文献文件</span><select name="file" title="选择要追加文献的 .bib 文件">${info.files.map(file => `<option value="${esc(file)}">${esc(file)}</option>`).join("")}</select></label>` : "";
+      const confirmation = await promptForm(info.existingKeys.length ? "文献已存在" : "智能插入文献", detail, cards + selector,
+        info.newKeys.length ? (info.existingKeys.length ? "复用已有文献并插入" : "插入文献") : "仅插入引用");
+      if (!confirmation) break;
+      target ||= confirmation.file || "";
       if (projectId !== state.ws?.project.id) break;
       await request("pasteCitation", { ...message, projectId, clipboard: info.text, bibliographyFile: target,
         confirmedExistingKeys: info.existingKeys });
@@ -1218,6 +1286,26 @@ window.folioHost.onEvent((event) => {
     case "notice":
       notify(event.message, event.error);
       break;
+    case "buildFinished": {
+      if (event.success) showLog(false);
+      else {
+        const target = $("#build-log");
+        if (event.rows?.length) {
+          target.replaceChildren();
+          for (const row of event.rows) {
+            if (row.path) {
+              const link = document.createElement("button"); link.className = "diagnostic-link";
+              link.textContent = `${row.path}:${row.line}${row.column > 1 ? ":" + row.column : ""} · ${row.message || "编译错误"}`;
+              link.title = `跳转到 ${row.path}:${row.line}`;
+              link.onclick = () => attempt(() => request("openFile", { path: row.path, line: row.line, column: row.column, diagnostic: true }));
+              target.append(link, document.createTextNode("\n"));
+            } else target.append(document.createTextNode(row.text + "\n"));
+          }
+        }
+        showLog(true);
+      }
+      break;
+    }
     case "buildStart":
       state.log = "";
       $("#build-log").textContent = "";
@@ -1482,9 +1570,14 @@ $("#toolbar-library").onclick = () => attempt(() => request("showLibrary"));
 $("#toolbar-search").onclick = () => attempt(openSearch);
 $("#toolbar-log").onclick = () => showLog($("#build-panel").hidden);
 $("#toolbar-engine").onclick = () => attempt(openConfiguration);
-$("#toolbar-citation").innerHTML = icon("file", 18);
+$("#toolbar-citation").innerHTML = icon("citation", 18);
 $("#toolbar-citation").onclick = () => editorCommand("pasteCitation");
 $(".workspace-toolbar-title").oncontextmenu = (event) => {
   if (state.ws) showMenu(event, [["file", "设置项目别名…", () => editProjectAlias(state.ws.project)]]);
 };
 $("#export-pdf").onclick = () => attempt(() => request("exportPDF"));
+
+$("#toolbar-sidebar-slot").append($("#toggle-sidebar"));
+
+$("#toolbar-deduplicate").innerHTML=icon("deduplicate",18);
+$("#toolbar-deduplicate").onclick=()=>attempt(openBibliographyDuplicates);

@@ -11,6 +11,7 @@ import {
   within,
   validName,
 } from "./files.js";
+import { buildDiagnostics } from "./diagnostics.js";
 import { scanSymbols } from "./indexer.js";
 import { compileProject, cleanArtifacts, syncQuery } from "./compiler.js";
 
@@ -629,45 +630,26 @@ export class Workspace {
   }
   async search(query, replacement) {
     if (typeof query !== "string" || !query || query.length > 1000)
-      return { hits: [], plan: [] };
-    const hits = [],
-      plan = [];
-    for (const file of this.files.filter(
-      (f) =>
-        !f.directory && textExtensions.has(path.extname(f.path).toLowerCase()),
-    )) {
+      return { hits: [], plan: [], total: 0, truncated: false };
+    const hits = [], plan = [];
+    let total = 0;
+    const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu");
+    for (const file of this.files.filter(f => !f.directory && textExtensions.has(path.extname(f.path).toLowerCase()))) {
       let text;
-      try {
-        text =
-          this.buffers.get(file.path)?.text ??
-          (await readSource(await resolveInside(this.project.path, file.path)))
-            .text;
-      } catch {
-        continue;
+      try { text = this.buffers.get(file.path)?.text ?? (await readSource(await resolveInside(this.project.path, file.path))).text; }
+      catch { continue; }
+      pattern.lastIndex = 0;
+      let line = 1, lineStart = 0, matched = false;
+      for (let match; (match = pattern.exec(text));) {
+        matched = true; total++;
+        if (hits.length >= 2000) continue;
+        for (let nl; (nl = text.indexOf("\n", lineStart)) >= 0 && nl < match.index;) { line++; lineStart = nl + 1; }
+        const lineEnd = text.indexOf("\n", match.index);
+        hits.push({ path: file.path, line, from: match.index, to: match.index + match[0].length, matchedText: match[0], text: text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd).slice(0,500) });
       }
-      const lower = text.toLowerCase(),
-        needle = query.toLowerCase();
-      if (!lower.includes(needle)) continue;
-      for (const [line, value] of text.split("\n").entries())
-        if (value.toLowerCase().includes(needle) && hits.length < 2000)
-          hits.push({
-            path: file.path,
-            line: line + 1,
-            text: value.slice(0, 500),
-          });
-      if (replacement !== undefined) {
-        let pos = 0,
-          after = "",
-          at;
-        while ((at = lower.indexOf(needle, pos)) >= 0) {
-          after += text.slice(pos, at) + replacement;
-          pos = at + query.length;
-        }
-        after += text.slice(pos);
-        plan.push({ path: file.path, before: text, after });
-      }
+      if (matched && replacement !== undefined) plan.push({ path: file.path, before: text, after: text.replace(pattern, () => replacement) });
     }
-    return { hits, plan };
+    return { hits, plan, total, truncated: total > hits.length };
   }
   async replace(plan) {
     if (!Array.isArray(plan) || plan.length > 15000)
@@ -743,6 +725,14 @@ export class Workspace {
       );
       this.pdfData = result.data;
       this.pdfFile = result.file;
+      this.pdfCopyWarning="";
+      try {
+        const paths=await this.buildPaths();
+        const relative=path.relative(this.project.path,path.join(path.dirname(paths.main),path.basename(paths.main,path.extname(paths.main))+".pdf")).split(path.sep).join("/");
+        const destination=await resolveInside(this.project.path,relative,{missing:true});
+        if (destination!==result.file) await atomicWrite(destination,result.data);
+        output("\nPDF 已同步到主 TeX 文件所在目录："+relative+"\n");
+      } catch(error) { this.pdfCopyWarning="PDF 同步失败："+error.message;output("\n"+this.pdfCopyWarning+"（构建目录中的 PDF 已保留）\n"); }
       this.pdfStale = revision !== this.revision;
       await atomicWrite(path.join(this.directory, "preview.pdf"), result.data);
       this.emit({
@@ -757,13 +747,15 @@ export class Workspace {
           output("\n清理提示：" + error.message + "\n");
         }
       }
+      this.emit({ type: "buildFinished", success: true });
       this.emit({
         type: "notice",
-        message: this.pdfStale ? "编译成功，源码随后已有修改" : "编译成功",
+        message: this.pdfCopyWarning ? "编译成功，但"+this.pdfCopyWarning : this.pdfStale ? "编译成功，源码随后已有修改" : "编译成功",
       });
     } catch (error) {
       this.pdfStale = true;
       output("\n" + error.message + "\n");
+      this.emit({ type: "buildFinished", success: false, rows: await buildDiagnostics(this).catch(() => []) });
       this.emit({ type: "notice", message: error.message, error: true });
     } finally {
       this.running = false;

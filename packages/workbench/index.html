@@ -105,6 +105,7 @@
     </main>
     <section id="workspace" class="workspace" hidden>
       <header class="workspace-toolbar">
+        <span id="toolbar-sidebar-slot"></span>
         <button
           id="toolbar-library"
           class="icon-button"
@@ -122,8 +123,8 @@
           ></button
           ><span id="toolbar-build-slot"></span
           ><span id="toolbar-view-slot"></span
-          ><button id="toolbar-citation" class="icon-button" title="插入剪贴板文献（Ctrl+Shift+B）"></button
-          ><button
+          ><button id="toolbar-citation" class="icon-button" title="智能插入文献（Ctrl+Shift+B）"></button
+          ><button id="toolbar-deduplicate" class="icon-button" title="智能文献去重（Ctrl+Alt+Shift+B）"></button><button
             id="toolbar-search"
             class="icon-button"
             title="项目搜索与替换（Ctrl+Shift+F）"
@@ -226,26 +227,16 @@
             ><span id="pdf-stale" class="stale-tag" hidden>待编译</span>
           </div>
           <div class="inline-actions">
-            <button
-              id="pdf-find"
-              class="icon-button"
-              title="查找 PDF 文本（Ctrl+F）"
-            ></button
-            ><button
-              id="pdf-minus"
-              class="icon-button"
-              title="缩小 PDF"
-            ></button
-            ><button
-              id="pdf-fit"
-              class="icon-button"
-              title="PDF 适合宽度"
-            ></button
-            ><button
-              id="pdf-plus"
-              class="icon-button"
-              title="放大 PDF"
-            ></button>
+            <span class="pdf-zoom-controls">
+              <button id="pdf-minus" class="icon-button" title="缩小 PDF"></button>
+              <span id="pdf-scale" class="pdf-metric" title="相对于当前预览宽度的缩放比例，适宽为 100%">—</span>
+              <button id="pdf-plus" class="icon-button" title="放大 PDF"></button>
+              <button id="pdf-fit" class="icon-button" title="适应预览宽度，恢复到 100%"></button>
+            </span>
+            <span id="pdf-page-label" class="pdf-metric" title="PDF 当前页 / 总页数">— / —</span>
+            <span class="pdf-trailing-actions">
+              <button id="pdf-find" class="icon-button" title="查找 PDF 文本（Ctrl+F）"></button>
+            </span>
           </div>
         </div>
         <div id="pdf-search" class="pdf-search" hidden>
@@ -281,8 +272,7 @@
           </div>
         </div>
         <div class="pdf-bottom">
-          <span id="pdf-page-label">— / —</span><span>双击 PDF 跳转源码</span
-          ><span id="pdf-scale">适宽</span>
+          <span>双击 PDF 跳转源码</span>
         </div>
       </section>
       <section id="build-panel" class="build-panel" hidden>

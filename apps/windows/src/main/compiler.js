@@ -106,6 +106,10 @@ export function runTool(
       text = (text + value).slice(-2 * 1024 * 1024);
       onData(value);
     };
+    // Decode each stream incrementally so chunk boundaries cannot corrupt
+    // Unicode project paths used by diagnostic source links.
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     child.stdout.on("data", data);
     child.stderr.on("data", data);
     child.once("error", (error) => {

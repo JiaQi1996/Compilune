@@ -1,3 +1,4 @@
+import { previewBibliographyDuplicates, applyBibliographyDuplicates } from "./bibliography-dedup.js";
 import {
   app,
   BrowserWindow,
@@ -26,6 +27,7 @@ import {
 } from "./files.js";
 import { findToolchain } from "./compiler.js";
 import { citationClipboard, insertClipboardCitation } from "./bibliography.js";
+import { referencePreview, localImagePreview } from "./previews.js";
 import { projectPDFName } from "../../build/workbench/project-names.js";
 
 const root = path.resolve(
@@ -195,6 +197,10 @@ async function openProject(project) {
       if (ws.pdfData)
         emit({ type: "pdf", data: new Uint8Array(ws.pdfData), stale: true });
       emit({ type: "library", ...library() });
+      if (store.settings.compileOnOpen && ws.config.root) setTimeout(() => {
+        if (workspace===ws && !ws.closed && !showingLibrary)
+          ws.compile().catch(error => notice(error.message,true));
+      },0);
       return true;
     } catch (error) {
       ws.pause();
@@ -377,6 +383,8 @@ const actions = {
     if (workspace?.project.id === project.id) workspace.publish();
     return true;
   },
+  localImagePreview: async (p) => localImagePreview(requireWorkspace(), p),
+  referencePreview: async (p) => referencePreview(requireWorkspace(), p),
   openFile: async (p) => {
     const ws = requireWorkspace();
     await flush();
@@ -388,11 +396,15 @@ const actions = {
     showDocument(
       ws.document(p.path, {
         line: p.line,
+        column: p.column,
+        diagnostic: p.diagnostic === true,
         anchor: p.anchor,
         head: p.head,
         scroll: p.scroll,
       }),
     );
+    if (Number.isInteger(p.from) && Number.isInteger(p.to))
+      ws.emit({ type: "editor", message: { type: "selectMatch", path: p.path, from: p.from, to: p.to, text: p.matchedText } });
     await ws.persistSession();
   },
   edit: async (p) => {
@@ -422,6 +434,8 @@ const actions = {
       throw new Error("请先在 TeX 文稿中定位插入位置");
     return citationClipboard(ws, clipboard.readText());
   },
+  bibliographyDuplicates: async () => { await flush(); return previewBibliographyDuplicates(requireWorkspace()); },
+  applyBibliographyDuplicates: async (p) => { await flush(); return applyBibliographyDuplicates(requireWorkspace(), p); },
   pasteCitation: async (p) => {
     const ws = requireWorkspace();
     if (p.projectId !== ws.project.id) throw new Error("项目已切换，请重试");

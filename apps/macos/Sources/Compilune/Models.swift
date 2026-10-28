@@ -76,6 +76,9 @@ struct ProjectConfig: Codable {
     @Published var texBin: String = UserDefaults.standard.string(forKey: "texBin") ?? "/Library/TeX/texbin" {
         didSet { UserDefaults.standard.set(texBin, forKey: "texBin") }
     }
+    @Published var compileOnOpen = UserDefaults.standard.object(forKey: "compileOnOpen") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(compileOnOpen, forKey: "compileOnOpen") }
+    }
     @Published var cleanAfterBuild = UserDefaults.standard.bool(forKey: "cleanAfterBuild") {
         didSet { UserDefaults.standard.set(cleanAfterBuild, forKey: "cleanAfterBuild") }
     }
@@ -228,6 +231,9 @@ struct SearchHit: Identifiable {
     let path: String
     let line: Int
     let text: String
+    let from: Int
+    let to: Int
+    let matchedText: String
 }
 struct ReplacementPlan {
     let id = UUID()
@@ -246,22 +252,38 @@ struct ReplacementPlan {
     @Published var error: String?
     @Published var log = ""
     @Published var showLog = false
-    @Published var pdfData: Data?
+    @Published var pdfData: Data? {
+        didSet {
+            if pdfData == nil {
+                pdfPageCount = 0
+                pdfScalePercent = 0
+            }
+        }
+    }
     @Published var pdfStale = true
     @Published var pdfLocation: PDFLocation?
     @Published var pdfQuery = ""
     @Published var pdfSearchVisible = false
     @Published var showFormattingToolbar = false
     @Published var pdfZoom = 0
+    @Published var pdfFitRequest = UUID()
     @Published var pdfPage = 1
+    @Published var pdfPageCount = 0
+    @Published var pdfScalePercent = 0
     var pdfSearchFocused = false
     @Published var running = false
     @Published var showSearch = false
     @Published var showConfig = false
+    @Published var showBibliographyDedup = false
+    @Published var bibliographyDuplicateReport: BibliographyDuplicateReport?
+    var bibliographyDedupSession: BibliographyDedupSession?
+    var didCompileOnOpen = false
     @Published var editorReady = false
-    @Published var search = ""
+    @Published var search = "" { didSet { if search != oldValue { projectSearch(immediate: false) } } }
     @Published var replacement = ""
     @Published var results: [SearchHit] = []
+    @Published var searchTotal = 0
+    @Published var searchCurrent: Int?
     @Published var plan: ReplacementPlan?
     @Published var showReplacePreview = false
     @Published var busySearch = false
@@ -334,13 +356,13 @@ struct ReplacementPlan {
         if let b = buffers[path] { return b.text }
         return try String(contentsOf: project.url.appendingPathComponent(path), encoding: .utf8)
     }
-    func open(_ path: String, line: Int? = nil) {
+    func open(_ path: String, line: Int? = nil, column: Int? = nil, diagnostic: Bool = false) {
         let target = project.url.appendingPathComponent(path).standardizedFileURL
         guard target.path.hasPrefix(project.path + "/") else {
             error = "文件不在当前项目内"
             return
         }
-        guard ["tex", "bib", "sty", "cls", "txt", "md"].contains(target.pathExtension.lowercased()) else {
+        guard ["tex", "bib", "sty", "cls", "txt", "md", "bst", "cfg", "def", "ltx", "tikz", "dtx", "ins"].contains(target.pathExtension.lowercased()) else {
             NSWorkspace.shared.open(target)
             return
         }
@@ -359,7 +381,7 @@ struct ReplacementPlan {
             selected = path
             send?([
                 "type": "open", "path": path, "text": buffers[path]!.text, "line": line as Any? ?? NSNull(),
-                "position": positionDictionary(path),
+                "position": positionDictionary(path), "column": column ?? 1, "diagnostic": diagnostic,
             ])
             persistSessionSoon()
         } catch { self.error = "无法以 UTF-8 打开：\(error.localizedDescription)" }
@@ -446,35 +468,59 @@ struct ReplacementPlan {
     }
     func symbols() -> [[String: Any]] { symbolList.map(\.dictionary) }
     func refreshIndex() { refreshIndexSoon(immediate: true) }
-    func projectSearch() {
+    func projectSearch(immediate: Bool = true) {
         scanTask?.cancel()
+        results = []; searchTotal = 0; searchCurrent = nil
+        guard !search.isEmpty else { busySearch = false; return }
         busySearch = true
-        let q = search
-        let root = project.url
+        let q = search, root = project.url
         let snapshots = buffers.mapValues { $0.text }
-        let paths = files.filter { ["tex", "bib", "sty", "cls", "txt", "md"].contains($0.pathExtension) }.map
-        { relative($0, to: root) }
+        let paths = files.filter { ["tex", "bib", "sty", "cls", "txt", "md", "bst", "cfg", "def", "ltx", "tikz"].contains($0.pathExtension.lowercased()) }.map { relative($0, to: root) }
         scanTask = Task {
-            let hits = await Task.detached { () -> [SearchHit] in
-                guard !q.isEmpty else { return [] }
-                var list: [SearchHit] = []
+            if !immediate { try? await Task.sleep(nanoseconds: 220_000_000) }
+            guard !Task.isCancelled else { return }
+            let result = await Task.detached { () -> ([SearchHit], Int) in
+                guard let regex = try? NSRegularExpression(pattern: NSRegularExpression.escapedPattern(for: q), options: .caseInsensitive) else { return ([], 0) }
+                var hits: [SearchHit] = [], total = 0
                 for path in paths {
-                    if Task.isCancelled { break }
-                    let text =
-                        snapshots[path]
-                        ?? (try? String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)) ?? ""
-                    for (i, line) in text.components(separatedBy: "\n").enumerated()
-                    where line.localizedCaseInsensitiveContains(q) {
-                        list.append(SearchHit(path: path, line: i + 1, text: line))
-                        if list.count >= 2000 { return list }
+                    let source = snapshots[path] ?? (try? String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)) ?? ""
+                    let text = source as NSString
+                    var line = 1, lineStart = 0
+                    regex.enumerateMatches(in: source, range: NSRange(location: 0, length: text.length)) { match, _, _ in
+                        guard let match else { return }
+                        total += 1
+                        guard hits.count < 2000 else { return }
+                        while lineStart < match.range.location {
+                            let newline = text.range(of: "\n", range: NSRange(location: lineStart, length: match.range.location - lineStart))
+                            if newline.location == NSNotFound { break }
+                            line += 1; lineStart = NSMaxRange(newline)
+                        }
+                        let end = text.range(of: "\n", range: NSRange(location: match.range.location, length: text.length - match.range.location)).location
+                        let length = min(500, (end == NSNotFound ? text.length : end) - lineStart)
+                        hits.append(SearchHit(path: path, line: line, text: text.substring(with: NSRange(location: lineStart, length: length)), from: match.range.location, to: NSMaxRange(match.range), matchedText: text.substring(with: match.range)))
                     }
                 }
-                return list
+                return (hits, total)
             }.value
             guard !Task.isCancelled else { return }
-            results = hits
-            busySearch = false
+            results = result.0; searchTotal = result.1; busySearch = false
         }
+    }
+    func selectSearchResult(_ index: Int) {
+        guard results.indices.contains(index) else { return }
+        let hit = results[index]
+        guard let source = try? contents(hit.path), hit.to <= (source as NSString).length,
+            (source as NSString).substring(with: NSRange(location: hit.from, length: hit.to - hit.from)) == hit.matchedText
+        else { status = "搜索结果已变化，请重新搜索"; projectSearch(); return }
+        searchCurrent = index
+        open(hit.path)
+        send?(["type": "selectMatch", "path": hit.path, "from": hit.from, "to": hit.to, "text": hit.matchedText])
+    }
+    func stepSearch(_ delta: Int) {
+        guard !results.isEmpty else { return }
+        let index = searchCurrent.map { $0 + delta } ?? (delta > 0 ? 0 : results.count - 1)
+        if searchTotal > results.count { selectSearchResult(min(results.count - 1, max(0, index))) }
+        else { selectSearchResult((index + results.count) % results.count) }
     }
     func previewReplace() {
         guard !search.isEmpty else { return }
@@ -520,18 +566,21 @@ struct ReplacementPlan {
         projectSearch()
     }
     func undoReplace() { undoEdit() }
-    var diagnostics: [(path: String, line: Int, message: String)] {
-        let cwd = project.url.appendingPathComponent(project.root).deletingLastPathComponent()
-        let pattern = #"^(.+\.(?:tex|sty|cls)):(\d+):\s*(.+)$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-        return log.components(separatedBy: "\n").compactMap { text in
-            guard let m = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-                let p = Range(m.range(at: 1), in: text), let l = Range(m.range(at: 2), in: text),
-                let msg = Range(m.range(at: 3), in: text), let line = Int(text[l])
-            else { return nil }
-            let url = URL(fileURLWithPath: String(text[p]), relativeTo: cwd).standardizedFileURL
-            guard url.path.hasPrefix(project.path + "/") else { return nil }
-            return (relative(url, to: project.url), line, String(text[msg]))
+    var diagnosticRows: [[String: Any]] {
+        guard let parser = try? BibliographyParser(), let rows = (try? parser.call("parseBuildLog", [log]))?["rows"] as? [[String: Any]] else { return [] }
+        let root = project.url.resolvingSymlinksInPath()
+        let known = Set(files.map { $0.resolvingSymlinksInPath().path })
+        return rows.map { value in
+            var row = value
+            guard let line = row["line"] as? Int, line > 0 else { return row }
+            let name = (row["file"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? project.root
+            var candidates = [URL(fileURLWithPath: name, relativeTo: buildCWD), root.appendingPathComponent(name)]
+            let sameNames = files.filter { $0.lastPathComponent == (name as NSString).lastPathComponent }
+            if !name.contains("/") && !name.contains("\\") && sameNames.count == 1 { candidates += sameNames }
+            if let target = candidates.map({ $0.resolvingSymlinksInPath().standardizedFileURL }).first(where: { $0.path.hasPrefix(root.path + "/") && known.contains($0.path) }) {
+                row["path"] = relative(target, to: root)
+            }
+            return row
         }
     }
     func compile() {
@@ -595,7 +644,13 @@ struct ReplacementPlan {
                         self.successfulPDF = url
                         self.pdfStale = self.revision != currentRevision
                         self.status = self.pdfStale ? "编译成功 · 有未编译更改" : "编译成功"
+                        self.showLog = false
                         self.cacheSuccessfulBuild(url)
+                        do {
+                            let destination = self.project.url.appendingPathComponent(self.project.root).deletingPathExtension().appendingPathExtension("pdf").resolvingSymlinksInPath()
+                            guard destination.path.hasPrefix(self.project.url.resolvingSymlinksInPath().path + "/") else { throw BuildError(message: "PDF 目标必须位于项目内") }
+                            if destination != url { try self.pdfData?.write(to: destination, options: .atomic) }
+                        } catch { self.status += " · PDF 同步失败：" + error.localizedDescription }
                         if Preferences.shared.cleanAfterBuild {
                             do { try BuildArtifacts.clean(pdf: url) } catch {
                                 self.status += " · 清理失败：" + error.localizedDescription
